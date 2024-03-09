@@ -30,6 +30,7 @@
 #define GIC_SGI_BITS              8
 #define GICD_IROUTER_INV          (~MPIDR_AFF_MSK)
 #define GIC_LOWEST_PRIO           (0xff)
+#define GIC_MAX_TTD               8
 
 #define GIC_INT_REG(NINT)         (NINT / (sizeof(uint32_t) * 8))
 #define GIC_INT_MASK(NINT)        (1U << NINT % (sizeof(uint32_t) * 8))
@@ -371,9 +372,37 @@ struct gicv_hw {
     uint32_t DIR;
 } __attribute__((__packed__, aligned(0x1000)));
 
+/*----------- GIC ITS -----------*/
+
+// Define only to GICv3
+// Verify the alignement and the offsets
+
+
+struct gits_hw {
+    /*ITS_CTRL_base frame*/
+    uint32_t CTLR;
+    uint32_t IIDR;
+    uint64_t TYPER;
+    uint8_t pad0[0x80 - 0x10];
+    uint64_t CBASER;
+    uint64_t CWRITER;
+    uint64_t CREADR;
+    uint8_t pad1[0x100 - 0x98];
+    uint64_t BASER[GIC_MAX_TTD];
+    uint8_t pad2[0xFFD0 - 0x140]; //??
+    uint32_t ID[(0x10000 - 0xFFD0) / sizeof(uint32_t)];
+
+    /*translation_base frame - ITS_base + 0x010000*/
+    uint8_t pad3[0x40 - 0x0];
+    uint32_t TRANSLATER;
+    uint8_t pad4[0x10000 - 0x44];
+} __attribute__((__packed__, aligned(0x10000)));    //64KB-aligned?
+
+
 extern volatile struct gicd_hw* gicd;
 extern volatile struct gicc_hw* gicc;
 extern volatile struct gich_hw* gich;
+extern volatile struct gits_hw* gits;
 
 enum int_state { INV, PEND, ACT, PENDACT };
 

@@ -15,6 +15,9 @@
 extern volatile struct gicd_hw* gicd;
 volatile struct gicr_hw* gicr;
 
+vaddr_t* gic_lpi_cfg_table; //Points to the LPI's config table
+vaddr_t* gic_lpi_pend_table; //Points to the LPI's pend table
+
 static spinlock_t gicd_lock = SPINLOCK_INITVAL;
 static spinlock_t gicr_lock = SPINLOCK_INITVAL;
 
@@ -38,6 +41,15 @@ static inline void gicc_init()
     sysreg_icc_igrpen1_el1_write(ICC_IGRPEN_EL1_ENB_BIT);
 }
 
+static inline uint8_t gicr_LPI_cfg_size() {
+    if(gicd->TYPER & BIT32_MASK(GICD_TYPER_IDBITS_MSK) < gicr[cpu()->id].PROPBASER & 0x1f) {
+        return ((gicd->TYPER & GICD_TYPER_IDBITS_MSK)+1) - 8192;
+    } else {
+        return ((gicr[cpu()->id].PROPBASER & 0x1f)+1) - 8192;;
+    }
+}
+
+
 static inline void gicr_init()
 {
     gicr[cpu()->id].WAKER &= ~GICR_WAKER_ProcessorSleep_BIT;
@@ -51,6 +63,28 @@ static inline void gicr_init()
     for (size_t i = 0; i < GIC_NUM_PRIO_REGS(GIC_CPU_PRIV); i++) {
         gicr[cpu()->id].IPRIORITYR[i] = -1;
     }
+
+    /* LPIs */
+
+    //Allocate config table
+    if(cpu()->id == CPU_MASTER) {
+        //alloc LPI configuration table
+        //must be 4k aligned
+        //Init to 0
+        gic_lpi_cfg_table = mem_alloc_vpage(&cpu()->as, SEC_HYP_GLOBAL, INVALID_VA,NUM_PAGES(gicr_LPI_cfg_size()));
+
+        gic_lpi_pend_table = mem_alloc_vpage(&cpu()->as, SEC_HYP_GLOBAL, INVALID_VA,NUM_PAGES());
+
+    }
+
+    // To-Do mask
+    gicr[cpu()->id].PROPBASER = gic_lpi_cfg_table;
+    gicr[cpu()->id].PENDBASER = gic_lpi_cfg_table;
+
+    //enable LPIs
+    //To-do - verify if is architecture allows it
+    //Only after all redistributors intialized
+    gicr[cpu()->id].CTLR = Enable_LPIs;
 }
 
 void gicc_save_state(struct gicc_state* state)
