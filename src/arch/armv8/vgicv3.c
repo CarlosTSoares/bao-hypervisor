@@ -80,8 +80,15 @@ void vgic_int_set_route_hw(struct vcpu* vcpu, struct vgic_int* interrupt)
 void vgicr_emul_ctrl_access(struct emul_access* acc, struct vgic_reg_handler_info* handlers,
     bool gicr_access, vcpuid_t vgicr_id)
 {
+    uint32_t val = 0;
+    val |= (gicr[cpu()->id].CTLR & 0x1);
+
     if (!acc->write) {
-        vcpu_writereg(cpu()->vcpu, acc->reg, 0);
+        vcpu_writereg(cpu()->vcpu, acc->reg, val);
+        console_printk("VGICv3: rCTRL value readed: 0x%x\n",val);
+    } else {
+        gicr[cpu()->id].CTLR |= (vcpu_readreg(cpu()->vcpu, acc->reg)&0x1);
+        console_printk("VGICv3: rCTRL value set to: 0x%x\n",gicr[cpu()->id].CTLR);
     }
 }
 
@@ -233,6 +240,7 @@ bool vgicr_emul_handler(struct emul_access* acc)
                 handler_info = &vgicr_pidr_info;
             } else {
                 handler_info = &razwi_info;
+                console_printk("GICv3: Inside razwi rEmulation in address:0x%x\n",acc->addr);
             }
         }
     }
@@ -242,10 +250,35 @@ bool vgicr_emul_handler(struct emul_access* acc)
         struct vcpu* vcpu =
             vgicr_id == cpu()->vcpu->id ? cpu()->vcpu : vm_get_vcpu(cpu()->vcpu->vm, vgicr_id);
         spin_lock(&vcpu->arch.vgic_priv.vgicr.lock);
-        handler_info->reg_access(acc, handler_info, true, vgicr_id);
+
+        //Only for testing
+        if(acc->addr == 0x80a0070 || acc->addr == 0x80c0070) {//if acces the propbaser 
+            if (!acc->write) {
+                // paddr_t prop_baser_pa;
+                // vaddr_t prop_baser_vm = vcpu_readreg(cpu()->vcpu, acc->reg);
+                // mem_translate(&cpu()->as, (vaddr_t)prop_baser_vm, &prop_baser_pa); //?
+                // gicr->PROPBASER = prop_baser_pa;
+                vcpu_writereg(cpu()->vcpu, acc->reg,gicr[cpu()->id].PROPBASER);
+                console_printk("VGIC3: Propbaser read from cpu %d -> 0x%x\n",cpu()->id,gicr[cpu()->id].PROPBASER);
+            }else{
+                gicr[cpu()->id].PROPBASER = vcpu_readreg(cpu()->vcpu, acc->reg);
+                console_printk("VGIC3: Propbaser write from cpu %d -> 0x%x\n",cpu()->id,gicr[cpu()->id].PROPBASER);
+            }
+        } else if(acc->addr == 0x80a0078 || acc->addr == 0x80c0078) {     //access the pendbaser
+             if (!acc->write) {
+                vcpu_writereg(cpu()->vcpu, acc->reg,gicr[cpu()->id].PENDBASER);
+                console_printk("VGIC3: Propbaser read from cpu %d -> 0x%x\n",cpu()->id,gicr[cpu()->id].PENDBASER);
+            }else {
+                gicr[cpu()->id].PENDBASER = vcpu_readreg(cpu()->vcpu, acc->reg);
+                console_printk("VGIC3: Propbaser write from cpu %d -> 0x%x\n",cpu()->id,gicr[cpu()->id].PENDBASER);
+            }
+        } else {
+            handler_info->reg_access(acc, handler_info, true, vgicr_id);
+        }
         spin_unlock(&vcpu->arch.vgic_priv.vgicr.lock);
         return true;
     } else {
+        console_printk("GICv3: Not aligned rEmulation in address:0x%x\n",acc->addr);
         return false;
     }
 }
@@ -292,7 +325,7 @@ void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp)
     vm->arch.vgicd.int_num = 32 * (vtyper_itln + 1);
     vm->arch.vgicd.TYPER = ((vtyper_itln << GICD_TYPER_ITLN_OFF) & GICD_TYPER_ITLN_MSK) |
         (((vm->cpu_num - 1) << GICD_TYPER_CPUNUM_OFF) & GICD_TYPER_CPUNUM_MSK) |
-        (((10 - 1) << GICD_TYPER_IDBITS_OFF) & GICD_TYPER_IDBITS_MSK);
+        (((15 - 1) << GICD_TYPER_IDBITS_OFF) & GICD_TYPER_IDBITS_MSK) | 0x20000; //LPI support
     vm->arch.vgicd.IIDR = gicd->IIDR;
 
     size_t vgic_int_size = vm->arch.vgicd.int_num * sizeof(struct vgic_int);
@@ -325,8 +358,9 @@ void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp)
         uint64_t typer = (uint64_t)vcpu->id << GICR_TYPER_PRCNUM_OFF;
         typer |= ((uint64_t)vcpu->arch.vmpidr & MPIDR_AFF_MSK) << GICR_TYPER_AFFVAL_OFF;
         typer |= !!(vcpu->id == vcpu->vm->cpu_num - 1) << GICR_TYPER_LAST_OFF;
+        typer |= 0x1; //enable PLPIS
         vcpu->arch.vgic_priv.vgicr.TYPER = typer;
-
+        //vcpu->arch.vgic_priv.vgicr.CTLR |= 0x1; //enable LPIs in CTRL;
         vcpu->arch.vgic_priv.vgicr.IIDR = gicr[cpu()->id].IIDR;
     }
 

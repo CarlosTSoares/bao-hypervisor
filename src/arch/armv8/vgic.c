@@ -416,8 +416,10 @@ void vgicd_emul_misc_access(struct emul_access* acc, struct vgic_reg_handler_inf
             break;
         case GICD_REG_IND(TYPER):
             if (!acc->write) {
+                console_printk("BAO-vgic: Inside read of dTYPER:%d\n",vgicd->TYPER);
                 vcpu_writereg(cpu()->vcpu, acc->reg, vgicd->TYPER);
-            }
+            }else
+                console_printk("BAO-vgic: Inside write of dTYPER:%d\n",vgicd->TYPER);
             break;
         case GICD_REG_IND(IIDR):
             if (!acc->write) {
@@ -833,7 +835,8 @@ struct vgic_reg_handler_info* vgic_get_reg_handler_info(enum vgic_reg_handler_in
 
 bool vgic_check_reg_alignment(struct emul_access* acc, struct vgic_reg_handler_info* handlers)
 {
-    if (!(handlers->alignment & acc->width) || ((acc->addr & (acc->width - 1)) != 0)) {
+    if ((!(handlers->alignment & acc->width) || ((acc->addr & (acc->width - 1)) != 0)) && (acc->addr != 0x80a0070) && (acc->addr != 0x80a0078) && (acc->addr != 0x80c0070) && (acc->addr != 0x80c0078)) {
+        console_printk("VGIC: In addr 0x%x, algin=0x%x, width=0x%x\n",acc->addr,handlers->alignment,acc->width);
         return false;
     } else {
         return true;
@@ -904,6 +907,19 @@ void vgic_inject_hw(struct vcpu* vcpu, irqid_t id)
     interrupt->owner = vcpu;
     interrupt->state = PEND;
     interrupt->in_lr = false;
+
+    /*LPIs test*/
+    // if(id==78){
+    //     console_printk("Is 78\n");
+    //     flag =1;
+    //     uint8_t *prop = (uint8_t *)0x83860001;
+    //     uint8_t *pend = (uint8_t *)0x83870400;
+    //     *prop |= 0x1;
+    //     *pend |= 0x10;
+    //     console_printk("LPI 8193 pend\n");
+    // }
+
+
     vgic_add_lr(vcpu, interrupt);
     spin_unlock(&interrupt->lock);
 }
