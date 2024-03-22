@@ -1,0 +1,9 @@
+{
+    "files.associations": {
+        "vgic.h": "c",
+        "sysregs.h": "c",
+        "fences.h": "c",
+        "config.h": "c",
+        "string.h": "c"
+    }
+}

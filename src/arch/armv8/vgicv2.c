@@ -124,7 +124,7 @@ void vgic_inject_sgi(struct vcpu* vcpu, struct vgic_int* interrupt, vcpuid_t sou
     spin_unlock(&interrupt->lock);
 }
 
-void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp)
+void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp,bool msi)
 {
     vm->arch.vgicd.CTLR = 0;
     size_t vtyper_itln = vgic_get_itln(vgic_dscrp);

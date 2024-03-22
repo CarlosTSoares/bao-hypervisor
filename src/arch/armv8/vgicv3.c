@@ -20,6 +20,8 @@
 #define GICR_REG_MASK(ADDR) ((ADDR) & 0x1ffff)
 #define GICD_REG_MASK(ADDR) ((ADDR) & (GIC_VERSION == GICV2 ? 0xfffUL : 0xffffUL))
 
+#define GICD_TYPER_IDBITS 0x20000
+
 bool vgic_int_has_other_target(struct vcpu* vcpu, struct vgic_int* interrupt)
 {
     bool priv = gic_is_priv(interrupt->id);
@@ -161,6 +163,43 @@ void vgicd_emul_router_access(struct emul_access* acc, struct vgic_reg_handler_i
     }
 }
 
+/* Propbaser and Pendbaser emulation*/
+
+void vgicr_emul_propbaser_access(struct emul_access* acc, struct vgic_reg_handler_info* handlers,
+    bool gicr_access, vcpuid_t vgicr_id) 
+{
+    if (!acc->write) {
+        // paddr_t prop_baser_pa;
+        // vaddr_t prop_baser_vm = vcpu_readreg(cpu()->vcpu, acc->reg);
+        // mem_translate(&cpu()->as, (vaddr_t)prop_baser_vm, &prop_baser_pa); //?
+        // gicr->PROPBASER = prop_baser_pa;
+        /*cpu()->vcpu->vm->config->platform.msi ? vcpu_writereg(cpu()->vcpu, acc->reg,gicr[cpu()->id].PROPBASER) :
+                vcpu_writereg(cpu()->vcpu, acc->reg,0);*/
+        vcpu_writereg(cpu()->vcpu, acc->reg,gicr[vgicr_id].PROPBASER);
+        console_printk("VGIC3: Propbaser read from cpu %d -> 0x%x\n",cpu()->id,gicr[vgicr_id].PROPBASER);
+    }else{
+
+        //if(cpu()->vcpu->vm->config.platform.msi)
+            gicr[vgicr_id].PROPBASER = vcpu_readreg(cpu()->vcpu, acc->reg);
+        console_printk("VGIC3: Propbaser write from cpu %d -> 0x%x\n",cpu()->id,gicr[vgicr_id].PROPBASER);
+    }
+}
+
+void vgicr_emul_pendbaser_access(struct emul_access* acc, struct vgic_reg_handler_info* handlers,
+    bool gicr_access, vcpuid_t vgicr_id) 
+{
+    if (!acc->write) {
+        /*platform.msi == true ? vcpu_writereg(cpu()->vcpu, acc->reg,gicr[cpu()->id].PENDBASER) :
+                vcpu_writereg(cpu()->vcpu, acc->reg,0);*/
+                vcpu_writereg(cpu()->vcpu, acc->reg,gicr[vgicr_id].PENDBASER);
+        console_printk("VGIC3: Pendbaser read from cpu %d -> 0x%x\n",cpu()->id,gicr[vgicr_id].PENDBASER);
+    }else {
+        //if(cpu()->vcpu->vm->config.platform.msi)
+            gicr[vgicr_id].PENDBASER = vcpu_readreg(cpu()->vcpu, acc->reg);
+        console_printk("VGIC3: Pendbaser write from cpu %d -> 0x%x\n",cpu()->id,gicr[vgicr_id].PENDBASER);
+    }
+}
+
 extern struct vgic_reg_handler_info isenabler_info;
 extern struct vgic_reg_handler_info ispendr_info;
 extern struct vgic_reg_handler_info isactiver_info;
@@ -193,6 +232,16 @@ struct vgic_reg_handler_info vgicr_typer_info = {
 struct vgic_reg_handler_info vgicr_pidr_info = {
     vgicr_emul_pidr_access,
     0b0100,
+};
+
+struct vgic_reg_handler_info vgicr_propbaser_info = {
+    vgicr_emul_propbaser_access,
+    0b1000,
+};
+
+struct vgic_reg_handler_info vgicr_pendbaser_info = {
+    vgicr_emul_pendbaser_access,
+    0b1000,
 };
 
 static inline vcpuid_t vgicr_get_id(struct emul_access* acc)
@@ -229,6 +278,12 @@ bool vgicr_emul_handler(struct emul_access* acc)
         case GICR_REG_OFF(ICFGR1):
             handler_info = &icfgr_info;
             break;
+        case GICR_REG_OFF(PROPBASER):
+            handler_info = &vgicr_propbaser_info;
+            break;
+        case GICR_REG_OFF(PENDBASER):
+            handler_info = &vgicr_pendbaser_info;
+            break;
         default: {
             size_t base_offset = acc->addr - cpu()->vcpu->vm->arch.vgicr_addr;
             size_t acc_offset = GICR_REG_MASK(base_offset);
@@ -250,31 +305,7 @@ bool vgicr_emul_handler(struct emul_access* acc)
         struct vcpu* vcpu =
             vgicr_id == cpu()->vcpu->id ? cpu()->vcpu : vm_get_vcpu(cpu()->vcpu->vm, vgicr_id);
         spin_lock(&vcpu->arch.vgic_priv.vgicr.lock);
-
-        //Only for testing
-        if(acc->addr == 0x80a0070 || acc->addr == 0x80c0070) {//if acces the propbaser 
-            if (!acc->write) {
-                // paddr_t prop_baser_pa;
-                // vaddr_t prop_baser_vm = vcpu_readreg(cpu()->vcpu, acc->reg);
-                // mem_translate(&cpu()->as, (vaddr_t)prop_baser_vm, &prop_baser_pa); //?
-                // gicr->PROPBASER = prop_baser_pa;
-                vcpu_writereg(cpu()->vcpu, acc->reg,gicr[cpu()->id].PROPBASER);
-                console_printk("VGIC3: Propbaser read from cpu %d -> 0x%x\n",cpu()->id,gicr[cpu()->id].PROPBASER);
-            }else{
-                gicr[cpu()->id].PROPBASER = vcpu_readreg(cpu()->vcpu, acc->reg);
-                console_printk("VGIC3: Propbaser write from cpu %d -> 0x%x\n",cpu()->id,gicr[cpu()->id].PROPBASER);
-            }
-        } else if(acc->addr == 0x80a0078 || acc->addr == 0x80c0078) {     //access the pendbaser
-             if (!acc->write) {
-                vcpu_writereg(cpu()->vcpu, acc->reg,gicr[cpu()->id].PENDBASER);
-                console_printk("VGIC3: Propbaser read from cpu %d -> 0x%x\n",cpu()->id,gicr[cpu()->id].PENDBASER);
-            }else {
-                gicr[cpu()->id].PENDBASER = vcpu_readreg(cpu()->vcpu, acc->reg);
-                console_printk("VGIC3: Propbaser write from cpu %d -> 0x%x\n",cpu()->id,gicr[cpu()->id].PENDBASER);
-            }
-        } else {
             handler_info->reg_access(acc, handler_info, true, vgicr_id);
-        }
         spin_unlock(&vcpu->arch.vgic_priv.vgicr.lock);
         return true;
     } else {
@@ -317,7 +348,7 @@ bool vgic_icc_sre_handler(struct emul_access* acc)
     return true;
 }
 
-void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp)
+void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp,bool msi)
 {
     vm->arch.vgicr_addr = vgic_dscrp->gicr_addr;
     vm->arch.vgicd.CTLR = 0;
@@ -325,7 +356,7 @@ void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp)
     vm->arch.vgicd.int_num = 32 * (vtyper_itln + 1);
     vm->arch.vgicd.TYPER = ((vtyper_itln << GICD_TYPER_ITLN_OFF) & GICD_TYPER_ITLN_MSK) |
         (((vm->cpu_num - 1) << GICD_TYPER_CPUNUM_OFF) & GICD_TYPER_CPUNUM_MSK) |
-        (((15 - 1) << GICD_TYPER_IDBITS_OFF) & GICD_TYPER_IDBITS_MSK) | 0x20000; //LPI support
+        ((((msi ? 15 : 10) - 1) << GICD_TYPER_IDBITS_OFF) & GICD_TYPER_IDBITS_MSK) | (msi? GICD_TYPER_IDBITS : 0); //LPI support
     vm->arch.vgicd.IIDR = gicd->IIDR;
 
     size_t vgic_int_size = vm->arch.vgicd.int_num * sizeof(struct vgic_int);
@@ -358,9 +389,8 @@ void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp)
         uint64_t typer = (uint64_t)vcpu->id << GICR_TYPER_PRCNUM_OFF;
         typer |= ((uint64_t)vcpu->arch.vmpidr & MPIDR_AFF_MSK) << GICR_TYPER_AFFVAL_OFF;
         typer |= !!(vcpu->id == vcpu->vm->cpu_num - 1) << GICR_TYPER_LAST_OFF;
-        typer |= 0x1; //enable PLPIS
+        typer |= (msi ? 0x1 : 0x0);   /*enable PLPIS*/
         vcpu->arch.vgic_priv.vgicr.TYPER = typer;
-        //vcpu->arch.vgic_priv.vgicr.CTLR |= 0x1; //enable LPIs in CTRL;
         vcpu->arch.vgic_priv.vgicr.IIDR = gicr[cpu()->id].IIDR;
     }
 

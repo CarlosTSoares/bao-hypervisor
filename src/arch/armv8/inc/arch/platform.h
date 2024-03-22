@@ -18,6 +18,7 @@ struct arch_platform {
         paddr_t gicv_addr;
         paddr_t gicd_addr;
         paddr_t gicr_addr;
+        paddr_t gits_addr;
 
         irqid_t maintenance_id;
     } gic;

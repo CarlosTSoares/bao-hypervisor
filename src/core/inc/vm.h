@@ -54,6 +54,7 @@ struct vm_platform {
     //  * config mmu parameter to true;
     //  */
     bool mmu;
+    bool msi;   /* specify msi capability in VM*/
 
     struct arch_vm_platform arch;
 };
@@ -79,6 +80,8 @@ struct vm {
     struct list emul_reg_list;
 
     struct vm_io io;
+
+    //To-do: add msi here
 
     BITMAP_ALLOC(interrupt_bitmap, MAX_INTERRUPTS);
 

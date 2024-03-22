@@ -271,6 +271,11 @@ struct vm* vm_init(struct vm_allocation* vm_alloc, const struct vm_config* confi
         vm_init_mem_regions(vm, config);
         vm_init_dev(vm, config);
         vm_init_ipc(vm, config);
+        if(config->platform.msi) {
+            /* Map the ITS region to only one guest*/
+            //console_printk("Bao-Hypervisor - Number of pages alloced to gits: %d\n",ALIGN(0x20000, PAGE_SIZE) / PAGE_SIZE);
+            mem_alloc_map_dev(&vm->as, SEC_VM_ANY,(vaddr_t)platform.arch.gic.gits_addr, platform.arch.gic.gits_addr, 0x20000 / PAGE_SIZE);
+        }
     }
 
     cpu_sync_and_clear_msgs(&vm->sync);
