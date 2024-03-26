@@ -394,6 +394,9 @@ void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp,bool msi)
         vcpu->arch.vgic_priv.vgicr.IIDR = gicr[cpu()->id].IIDR;
     }
 
+    /*GIC version of cpu interface*/
+
+
     vm->arch.vgicr_emul = (struct emul_mem){ .va_base = vgic_dscrp->gicr_addr,
         .size = ALIGN(sizeof(struct gicr_hw), PAGE_SIZE) * vm->cpu_num,
         .handler = vgicr_emul_handler };

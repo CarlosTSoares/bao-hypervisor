@@ -907,19 +907,6 @@ void vgic_inject_hw(struct vcpu* vcpu, irqid_t id)
     interrupt->owner = vcpu;
     interrupt->state = PEND;
     interrupt->in_lr = false;
-
-    /*LPIs test*/
-    // if(id==78){
-    //     console_printk("Is 78\n");
-    //     flag =1;
-    //     uint8_t *prop = (uint8_t *)0x83860001;
-    //     uint8_t *pend = (uint8_t *)0x83870400;
-    //     *prop |= 0x1;
-    //     *pend |= 0x10;
-    //     console_printk("LPI 8193 pend\n");
-    // }
-
-
     vgic_add_lr(vcpu, interrupt);
     spin_unlock(&interrupt->lock);
 }
@@ -1078,19 +1065,23 @@ void vgic_handle_trapped_eoir(struct vcpu* vcpu)
         unsigned long lr_val = gich_read_lr(lr_ind);
         gich_write_lr(lr_ind, 0);
 
-        struct vgic_int* interrupt = vgic_get_int(vcpu, GICH_LR_VID(lr_val), vcpu->id);
-        if (interrupt == NULL) {
-            continue;
-        }
+        if(GICH_LR_VID(lr_val) < 8192) {
+            struct vgic_int* interrupt = vgic_get_int(vcpu, GICH_LR_VID(lr_val), vcpu->id);
+            if (interrupt == NULL) {
+                continue;
+            }
 
-        spin_lock(&interrupt->lock);
-        interrupt->in_lr = false;
-        if (interrupt->id < GIC_MAX_SGIS) {
-            vgic_add_lr(vcpu, interrupt);
+            spin_lock(&interrupt->lock);
+            interrupt->in_lr = false;
+            if (interrupt->id < GIC_MAX_SGIS) {
+                vgic_add_lr(vcpu, interrupt);
+            } else {
+                vgic_yield_ownership(vcpu, interrupt);
+            }
+            spin_unlock(&interrupt->lock);
         } else {
-            vgic_yield_ownership(vcpu, interrupt);
+            console_printk("[BAO] EOIR of LPI done with LR=%d\n",lr_ind);
         }
-        spin_unlock(&interrupt->lock);
         eisr = gich_get_eisr();
         lr_ind = bit64_ffs(eisr & BIT64_MASK(0, NUM_LRS));
     }
@@ -1100,15 +1091,26 @@ void gic_maintenance_handler(irqid_t irq_id)
 {
     uint32_t misr = gich_get_misr();
 
+    console_printk("[Bao] Inside maintenance handler with irq_id = %d\n",irq_id);
+
     if (misr & GICH_MISR_EOI) {
+        console_printk("[Bao] Inside maintenance handler 1\n");
+        // if(irq_id >= 8192) {
+        //     uint64_t eisr = gich_get_eisr();
+        //     int64_t lr_ind = bit64_ffs(eisr & BIT64_MASK(0, NUM_LRS));
+        //     gich_write_lr(lr_ind, 0);
+        //     console_printk("[BAO] EOIR of LPIs done\n");
+        // } else 
         vgic_handle_trapped_eoir(cpu()->vcpu);
     }
 
     if (misr & (GICH_MISR_NP | GICH_MISR_U)) {
+        console_printk("[Bao] Inside maintenance handler 2\n");
         vgic_refill_lrs(cpu()->vcpu, !!(misr & GICH_MISR_NP));
     }
 
     if (misr & GICH_MISR_LRPEN) {
+        console_printk("[Bao] Inside maintenance handler 3\n");
         uint32_t hcr_el2 = gich_get_hcr();
         while (hcr_el2 & GICH_HCR_EOICount_MASK) {
             vgic_eoir_highest_spilled_active(cpu()->vcpu);
@@ -1117,6 +1119,7 @@ void gic_maintenance_handler(irqid_t irq_id)
             hcr_el2 = gich_get_hcr();
         }
     }
+    console_printk("[Bao] Inside maintenance handler end\n");
 }
 
 size_t vgic_get_itln(const struct vgic_dscrp* vgic_dscrp)

@@ -103,7 +103,37 @@ void gic_handle()
             gicc_dir(ack);
         }
     }else {
-        console_printk("BAO: Interrupt received wiht ID out of range - %d\n",id);
+        console_printk("[BAO] Interrupt received wiht ID out of range - %d\n",id);
+        /*If LPI range*/
+
+        /*List register available*/
+
+        ssize_t lr_ind = -1;
+        gic_lr_t lr;
+        uint64_t elrsr = gich_get_elrsr();          //locate a usable List register when hypervisor is delivering an interrupt to a VM
+        for (size_t i = 0; i < NUM_LRS; i++) {
+            if (bit64_get(elrsr, i)) {  //contains a valid interrupt
+                lr_ind = i;
+                break;
+            }
+        }
+
+        console_printk("[Bao] List register index: %d\n",lr_ind);
+        
+        if(lr_ind < 0) {
+            console_printk("[Bao] Cannot get a List register\n");
+        } else {
+            console_printk("[Bao] List register obtained\n");
+            lr = ((id << GICH_LR_VID_OFF) & GICH_LR_VID_MSK);
+            lr |= (((gic_lr_t)0x02 << GICH_LR_PRIO_OFF) & GICH_LR_PRIO_MSK) | GICH_LR_GRP_BIT;
+            lr |= GICH_LR_EOI_BIT;
+            lr |= ((gic_lr_t)PEND << GICH_LR_STATE_OFF) & GICH_LR_STATE_MSK;
+            gich_write_lr(lr_ind, lr);
+            //gicc_eoir(ack);
+            console_printk("[Bao] List register updated\n");
+        }
+        gicc_eoir(ack);
+
     }
 }
 
