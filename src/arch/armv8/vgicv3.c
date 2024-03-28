@@ -199,41 +199,6 @@ void vgicr_emul_pendbaser_access(struct emul_access* acc, struct vgic_reg_handle
         console_printk("VGIC3: Pendbaser write from cpu %d -> 0x%x\n",cpu()->id,gicr[vgicr_id].PENDBASER);
     }
 }
-/*
-void vgicr_emul_vpropbaser_access(struct emul_access* acc, struct vgic_reg_handler_info* handlers,
-    bool gicr_access, vcpuid_t vgicr_id) 
-{
-    if (!acc->write) {
-        // paddr_t prop_baser_pa;
-        // vaddr_t prop_baser_vm = vcpu_readreg(cpu()->vcpu, acc->reg);
-        // mem_translate(&cpu()->as, (vaddr_t)prop_baser_vm, &prop_baser_pa); //?
-        // gicr->PROPBASER = prop_baser_pa;
-        // cpu()->vcpu->vm->config->platform.msi ? vcpu_writereg(cpu()->vcpu, acc->reg,gicr[cpu()->id].PROPBASER) :
-        //         vcpu_writereg(cpu()->vcpu, acc->reg,0);
-        vcpu_writereg(cpu()->vcpu, acc->reg,gicr[vgicr_id].VPROPBASER);
-        console_printk("VGIC3: VPropbaser read from cpu %d -> 0x%x\n",cpu()->id,gicr[vgicr_id].VPROPBASER);
-    }else{
-
-        //if(cpu()->vcpu->vm->config.platform.msi)
-            gicr[vgicr_id].VPROPBASER = vcpu_readreg(cpu()->vcpu, acc->reg);
-        console_printk("VGIC3: VPropbaser write from cpu %d -> 0x%x\n",cpu()->id,gicr[vgicr_id].VPROPBASER);
-    }
-}
-
-void vgicr_emul_vpendbaser_access(struct emul_access* acc, struct vgic_reg_handler_info* handlers,
-    bool gicr_access, vcpuid_t vgicr_id) 
-{
-    if (!acc->write) {
-        // platform.msi == true ? vcpu_writereg(cpu()->vcpu, acc->reg,gicr[cpu()->id].PENDBASER) :
-        //         vcpu_writereg(cpu()->vcpu, acc->reg,0);
-                vcpu_writereg(cpu()->vcpu, acc->reg,gicr[vgicr_id].VPENDBASER);
-        console_printk("VGIC3: VPendbaser read from cpu %d -> 0x%x\n",cpu()->id,gicr[vgicr_id].VPENDBASER);
-    }else {
-        //if(cpu()->vcpu->vm->config.platform.msi)
-            gicr[vgicr_id].VPENDBASER = vcpu_readreg(cpu()->vcpu, acc->reg);
-        console_printk("VGIC3: VPendbaser write from cpu %d -> 0x%x\n",cpu()->id,gicr[vgicr_id].VPENDBASER);
-    }
-}*/
 
 extern struct vgic_reg_handler_info isenabler_info;
 extern struct vgic_reg_handler_info ispendr_info;
@@ -278,16 +243,6 @@ struct vgic_reg_handler_info vgicr_pendbaser_info = {
     vgicr_emul_pendbaser_access,
     0b1000,
 };
-/*
-struct vgic_reg_handler_info vgicr_vpropbaser_info = {
-    vgicr_emul_vpropbaser_access,
-    0b1000,
-};
-
-struct vgic_reg_handler_info vgicr_vpendbaser_info = {
-    vgicr_emul_vpendbaser_access,
-    0b1000,
-};*/
 
 static inline vcpuid_t vgicr_get_id(struct emul_access* acc)
 {
@@ -323,12 +278,13 @@ bool vgicr_emul_handler(struct emul_access* acc)
         case GICR_REG_OFF(ICFGR1):
             handler_info = &icfgr_info;
             break;
-        // case GICR_REG_OFF(PROPBASER):
-        //     handler_info = &vgicr_propbaser_info;
-        //     break;
-        // case GICR_REG_OFF(PENDBASER):
-        //     handler_info = &vgicr_pendbaser_info;
-        //     break;
+        case GICR_REG_OFF(PROPBASER):
+            handler_info = &vgicr_propbaser_info;
+            console_printk("[BAO] Address 0x%x access the propbaser handler\n",acc->addr);
+            break;
+        case GICR_REG_OFF(PENDBASER):
+            handler_info = &vgicr_pendbaser_info;
+            break;
         default: {
             size_t base_offset = acc->addr - cpu()->vcpu->vm->arch.vgicr_addr;
             size_t acc_offset = GICR_REG_MASK(base_offset);
@@ -338,28 +294,12 @@ bool vgicr_emul_handler(struct emul_access* acc)
                 handler_info = &ipriorityr_info;
             } else if (GICR_IS_REG(ID, acc_offset)) {
                 handler_info = &vgicr_pidr_info;
-            } else if (base_offset == 0x70 || base_offset == 0x20070) {
-                console_printk("Value of ISREG prop: 0x%x and acc_offset=0x%x, base offset=0x%x\n",GICR_IS_REG(PROPBASER, acc_offset),acc_offset,base_offset);
-                handler_info = &vgicr_propbaser_info;
-            } else if (base_offset == 0x78 || base_offset == 0x20078) {
-                handler_info = &vgicr_pendbaser_info;
-            /*} else if (base_offset == 0x20070 || base_offset == 0x60070) {
-                console_printk("Value of ISREG vprop: 0x%x and acc_offset=0x%x, base offset=0x%x\n",GICR_IS_REG(VPROPBASER, acc_offset),acc_offset,base_offset);
-                handler_info = &vgicr_vpropbaser_info;
-            } else if (base_offset == 0x20078 || base_offset == 0x60078) {
-                handler_info = &vgicr_vpendbaser_info;*/
             } else {
                 handler_info = &razwi_info;
-                // console_printk("Offset vprop 0x%x\n",GICR_REG_OFF(VPROPBASER));
-                // console_printk("Inside propbaser emulation with addr 0x%x\n",acc->addr);
                 console_printk("GICv3: Inside razwi rEmulation in address:0x%x with base_offset=0x%x\n",acc->addr,base_offset);
             }
         }
     }
-
-    //console_printk("Addr: 0x%x\n",acc->addr);
-    //console_printk("Offset prop 0x%x\n",GICR_REG_OFF(PROPBASER));
-    //console_printk("Reg mask 0x%x\n",GICR_REG_MASK(acc->addr));
 
     if (vgic_check_reg_alignment(acc, handler_info)) {
         vcpuid_t vgicr_id = vgicr_get_id(acc);

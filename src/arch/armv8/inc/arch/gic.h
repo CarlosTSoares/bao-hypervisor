@@ -196,18 +196,6 @@ struct gicr_hw {
     uint32_t IGRPMODR0;
     uint8_t pad16[0x0e00 - 0xd04];
     uint32_t NSACR;
-
-    /* VLPI_base frame - only if gicv4 available*/
-/*    uint8_t vlpi_base[0] __attribute__((aligned(0x10000)));
-    uint8_t pad17[0x70 - 0x00];
-    uint64_t VPROPBASER;
-    uint64_t VPENDBASER;
-    uint8_t pad18[0x10000 - 0x80]; */
-
-    /* Reserved_base frame - only if gicv4 available*/
-    /*uint8_t reserved_base[0] __attribute__((aligned(0x10000)));
-    uint8_t pad19[0x10000];*/
-
 } __attribute__((__packed__, aligned(0x10000)));
 
 /* CPU Interface Control Register, GICC_CTLR */

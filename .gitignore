@@ -5,3 +5,6 @@ bin/qemu-aarch64-virt/linux_pcie/bao.asm
 bin/qemu-aarch64-virt/linux_pcie/bao.asm
 bin/qemu-aarch64-virt/linux_pcie/bao.bin
 bin/qemu-aarch64-virt/linux_pcie/bao.elf.txt
+*.asm
+*.bin
+*.elf

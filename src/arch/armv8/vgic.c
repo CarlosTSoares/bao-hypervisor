@@ -416,10 +416,8 @@ void vgicd_emul_misc_access(struct emul_access* acc, struct vgic_reg_handler_inf
             break;
         case GICD_REG_IND(TYPER):
             if (!acc->write) {
-                console_printk("BAO-vgic: Inside read of dTYPER:%d\n",vgicd->TYPER);
                 vcpu_writereg(cpu()->vcpu, acc->reg, vgicd->TYPER);
-            }else
-                console_printk("BAO-vgic: Inside write of dTYPER:%d\n",vgicd->TYPER);
+            }
             break;
         case GICD_REG_IND(IIDR):
             if (!acc->write) {
@@ -835,7 +833,7 @@ struct vgic_reg_handler_info* vgic_get_reg_handler_info(enum vgic_reg_handler_in
 
 bool vgic_check_reg_alignment(struct emul_access* acc, struct vgic_reg_handler_info* handlers)
 {
-    if ((!(handlers->alignment & acc->width) || ((acc->addr & (acc->width - 1)) != 0)) /*&& (acc->addr != 0x80a0070) && (acc->addr != 0x80a0078) && (acc->addr != 0x80c0070) && (acc->addr != 0x80c0078)*/) {
+    if ((!(handlers->alignment & acc->width) || ((acc->addr & (acc->width - 1)) != 0))) {
         console_printk("VGIC: In addr 0x%x, algin=0x%x, width=0x%x\n",acc->addr,handlers->alignment,acc->width);
         return false;
     } else {
