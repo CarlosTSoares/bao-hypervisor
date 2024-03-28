@@ -12,7 +12,7 @@
 void vm_arch_init(struct vm* vm, const struct vm_config* config)
 {
     if (vm->master == cpu()->id) {
-        vgic_init(vm, &config->platform.arch.gic,config->platform.msi);
+        vgic_init(vm, &config->platform.arch.gic,config->platform.arch.gic.msi);
     }
     cpu_sync_and_clear_msgs(&vm->sync);
 }

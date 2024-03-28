@@ -835,7 +835,7 @@ struct vgic_reg_handler_info* vgic_get_reg_handler_info(enum vgic_reg_handler_in
 
 bool vgic_check_reg_alignment(struct emul_access* acc, struct vgic_reg_handler_info* handlers)
 {
-    if ((!(handlers->alignment & acc->width) || ((acc->addr & (acc->width - 1)) != 0)) && (acc->addr != 0x80a0070) && (acc->addr != 0x80a0078) && (acc->addr != 0x80c0070) && (acc->addr != 0x80c0078)) {
+    if ((!(handlers->alignment & acc->width) || ((acc->addr & (acc->width - 1)) != 0)) /*&& (acc->addr != 0x80a0070) && (acc->addr != 0x80a0078) && (acc->addr != 0x80c0070) && (acc->addr != 0x80c0078)*/) {
         console_printk("VGIC: In addr 0x%x, algin=0x%x, width=0x%x\n",acc->addr,handlers->alignment,acc->width);
         return false;
     } else {

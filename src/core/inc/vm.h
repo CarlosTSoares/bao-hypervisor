@@ -35,6 +35,13 @@ struct vm_dev_region {
     deviceid_t id; /* bus master id for iommu effects */
 };
 
+struct vm_pcie_region {
+    paddr_t pa;
+    vaddr_t va;
+    size_t size;
+    bool cfg_space;
+};
+
 struct vm_platform {
     size_t cpu_num;
 
@@ -47,6 +54,14 @@ struct vm_platform {
     size_t dev_num;
     struct vm_dev_region* devs;
 
+    /* Pcie configuration */
+    size_t pcie_region_num;
+    struct vm_pcie_region* pcie_regions;
+    size_t pcie_irq_num;
+    irqid_t* pcie_irq;
+    //bool pcie_msi;   /* specify msi capability in VM*/
+
+
     // /**
     //  * In MPU-based platforms which might also support virtual memory
     //  * (i.e. aarch64 cortex-r) the hypervisor sets up the VM using an MPU by
@@ -54,7 +69,7 @@ struct vm_platform {
     //  * config mmu parameter to true;
     //  */
     bool mmu;
-    bool msi;   /* specify msi capability in VM*/
+
 
     struct arch_vm_platform arch;
 };

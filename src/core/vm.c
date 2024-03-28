@@ -192,6 +192,42 @@ static void vm_init_ipc(struct vm* vm, const struct vm_config* config)
     }
 }
 
+static void vm_init_pcie(struct vm* vm, const struct vm_config* config){
+
+        for (size_t i = 0; i < config->platform.pcie_region_num; i++) {
+            struct vm_pcie_region* reg = &config->platform.pcie_regions[i];
+
+            size_t n = ALIGN(reg->size, PAGE_SIZE) / PAGE_SIZE;
+
+            if (reg->va != INVALID_VA) {
+                mem_alloc_map_dev(&vm->as, SEC_VM_ANY, (vaddr_t)reg->va, reg->pa, n);
+            }
+
+        }
+        for (size_t j = 0; j < config->platform.pcie_irq_num; j++) {
+                if (!interrupts_vm_assign(vm, config->platform.pcie_irq[j])) {
+                    ERROR("Failed to assign interrupt id %d", config->platform.pcie_irq[j]);
+                }
+            }
+
+    /*PCIe msi init*/
+
+    // if(config->platform.arch.gic.msi) {
+
+    // }
+
+
+}
+
+static void vm_init_msi(struct vm* vm, const struct vm_config* config){
+
+    if(config->platform.arch.gic.msi) {
+        /* Map the ITS region to only one guest*/
+        //console_printk("Bao-Hypervisor - Number of pages alloced to gits: %d\n",ALIGN(0x20000, PAGE_SIZE) / PAGE_SIZE);
+        mem_alloc_map_dev(&vm->as, SEC_VM_ANY,(vaddr_t)platform.arch.gic.gits_addr, platform.arch.gic.gits_addr, 0x20000 / PAGE_SIZE);
+    }
+}
+
 //Map devices to VM address space and assign the interrupts
 //Add devices to IOMMU
 static void vm_init_dev(struct vm* vm, const struct vm_config* config)
@@ -271,11 +307,8 @@ struct vm* vm_init(struct vm_allocation* vm_alloc, const struct vm_config* confi
         vm_init_mem_regions(vm, config);
         vm_init_dev(vm, config);
         vm_init_ipc(vm, config);
-        if(config->platform.msi) {
-            /* Map the ITS region to only one guest*/
-            //console_printk("Bao-Hypervisor - Number of pages alloced to gits: %d\n",ALIGN(0x20000, PAGE_SIZE) / PAGE_SIZE);
-            mem_alloc_map_dev(&vm->as, SEC_VM_ANY,(vaddr_t)platform.arch.gic.gits_addr, platform.arch.gic.gits_addr, 0x20000 / PAGE_SIZE);
-        }
+        vm_init_pcie(vm, config);
+        vm_init_msi(vm, config);
     }
 
     cpu_sync_and_clear_msgs(&vm->sync);
