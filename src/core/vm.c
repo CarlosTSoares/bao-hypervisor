@@ -209,22 +209,16 @@ static void vm_init_pcie(struct vm* vm, const struct vm_config* config){
                     ERROR("Failed to assign interrupt id %d", config->platform.pcie_irq[j]);
                 }
             }
-
-    /*PCIe msi init*/
-
-    // if(config->platform.arch.gic.msi) {
-
-    // }
-
-
+        
+        //To-Do assign LPI interrupts
 }
 
 static void vm_init_msi(struct vm* vm, const struct vm_config* config){
 
     if(config->platform.arch.gic.msi) {
         /* Map the ITS region to only one guest*/
-        //console_printk("Bao-Hypervisor - Number of pages alloced to gits: %d\n",ALIGN(0x20000, PAGE_SIZE) / PAGE_SIZE);
         mem_alloc_map_dev(&vm->as, SEC_VM_ANY,(vaddr_t)platform.arch.gic.gits_addr, platform.arch.gic.gits_addr, 0x20000 / PAGE_SIZE);
+        //To-Do Add macro for its size
     }
 }
 

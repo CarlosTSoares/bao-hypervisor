@@ -39,7 +39,6 @@ void aborts_data_lower(unsigned long iss, unsigned long far, unsigned long il, u
 
         // TODO: check if the access is aligned. If not, inject an exception in the vm
         if (handler(&emul)) {
-            //console_printk("Addr 0x%x emulated\n",far);
             unsigned long pc_step = 2 + (2 * il);
             vcpu_writepc(cpu()->vcpu, vcpu_readpc(cpu()->vcpu) + pc_step);
         } else {

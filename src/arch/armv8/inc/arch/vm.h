@@ -45,6 +45,12 @@ struct vm_arch {
     struct emul_mem vgicr_emul;
     struct emul_reg icc_sgir_emul;
     struct emul_reg icc_sre_emul;
+/* Prop table pointer*/
+    struct emul_mem proptable_emul;
+    vaddr_t prop_table_addr;
+    // struct emul_mem pendtable_emul;
+
+
 };
 
 struct vcpu_arch {

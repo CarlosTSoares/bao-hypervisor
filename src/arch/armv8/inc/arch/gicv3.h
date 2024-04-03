@@ -150,4 +150,19 @@ static inline void gicc_dir(uint32_t dir)
     sysreg_icc_dir_el1_write(dir);
 }
 
+/* Disable the enableLPIs bit in all redistributor's VM */
+static inline void disable_gicr_lpis(cpuid_t id)
+{
+    gicr[id].CTLR &= 0xfffffffe;
+    console_printk("[BAO] Redistributor's %d enable lpis desabled\n",id);
+}
+
+static inline void enable_gicr_lpis(cpuid_t id)
+{
+    gicr[id].CTLR |= 0x1;
+}
+
+bool gic_alloc_lpi_tables();
+void gic_cpu_init_lpis();
+
 #endif /* __GICV3_H__ */

@@ -416,28 +416,35 @@ void mem_unmap(struct addr_space* as, vaddr_t at, size_t num_pages, bool free_pp
     vaddr_t vaddr = at;
     vaddr_t top = at + (num_pages * PAGE_SIZE);
     size_t lvl = 0;
-
+    console_printk("[Bao] Before as lock\n");
     spin_lock(&as->lock);
-
     struct section* sec = mem_find_sec(as, at);
+    console_printk("[Bao] Section of as beg: 0x%x and shared %d\n"
+            ,sec->beg,sec->shared);
+
     if (sec->shared) {
+        console_printk("[Bao] Before sec lock\n");
         spin_lock(&sec->lock);
     }
-
+    console_printk("[Bao] Before while\n");
     while (vaddr < top) {
+        console_printk("[Bao] Inside while\n");
         pte_t* pte = pt_get_pte(&as->pt, lvl, vaddr);
         if (pte == NULL) {
+            console_printk("[Bao] Inside err\n");
             ERROR("invalid pte while freeing vpages");
         } else if (!pte_valid(pte)) {
+            console_printk("[Bao] Inside pte_valid\n");
             size_t lvlsz = pt_lvlsize(&as->pt, lvl);
             vaddr += lvlsz;
         } else if (pte_table(&as->pt, pte, lvl)) {
+            console_printk("[Bao] Inside pte_table\n");
             lvl++;
         } else {
+            console_printk("[Bao] Inside elsee\n");
             size_t entry = pt_getpteindex(&as->pt, pte, lvl);
             size_t nentries = pt_nentries(&as->pt, lvl);
             size_t lvlsz = pt_lvlsize(&as->pt, lvl);
-
             while ((entry < nentries) && (vaddr < top)) {
                 if (!pte_table(&as->pt, pte, lvl)) {
                     vaddr_t vpage_base = vaddr & ~(lvlsz - 1);
@@ -477,9 +484,11 @@ void mem_unmap(struct addr_space* as, vaddr_t at, size_t num_pages, bool free_pp
 
     if (sec->shared) {
         spin_unlock(&sec->lock);
+        console_printk("[Bao] After sec lock\n");
     }
 
     spin_unlock(&as->lock);
+    console_printk("[Bao] After as lock\n");
 }
 
 bool mem_map(struct addr_space* as, vaddr_t va, struct ppages* ppages, size_t num_pages,

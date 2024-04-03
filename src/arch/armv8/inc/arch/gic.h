@@ -149,6 +149,14 @@ struct gicd_hw {
 #define GICR_WAKER_ProcessorSleep_BIT (0x2)
 #define GICR_WAKER_ChildrenASleep_BIT (0x4)
 
+#define GICR_PROPBASER_PHY_OFF                  (12)
+#define GICR_PROPBASER_SHAREABILITY_OFF         (10)
+#define GICR_PROPBASER_INNERCACHE_OFF           (7)
+#define GICR_PROPBASER_InnerShareable           (1ULL << GICR_PROPBASER_SHAREABILITY_OFF)
+#define GICR_PROPBASER_RaWaWb    (7ULL << GICR_PROPBASER_INNERCACHE_OFF)
+#define GICR_PROPTABLE_SZ(IDbits)               ((1<<(IDbits+1)) - 8192) //maybe not here
+
+
 struct gicr_hw {
     /* RD_base frame */
     uint32_t CTLR;
@@ -432,6 +440,8 @@ void gic_maintenance_handler(irqid_t irq_id);
 
 extern volatile struct gicd_hw* gicd;
 extern volatile struct gicr_hw* gicr;
+
+extern volatile uint8_t* proptable;
 
 size_t gich_num_lrs();
 

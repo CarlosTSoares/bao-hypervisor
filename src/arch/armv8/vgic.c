@@ -1078,6 +1078,7 @@ void vgic_handle_trapped_eoir(struct vcpu* vcpu)
             }
             spin_unlock(&interrupt->lock);
         } else {
+            // To-do remove lr from interrupt LPI struct
             console_printk("[BAO] EOIR of LPI done with LR=%d\n",lr_ind);
         }
         eisr = gich_get_eisr();
@@ -1092,13 +1093,6 @@ void gic_maintenance_handler(irqid_t irq_id)
     console_printk("[Bao] Inside maintenance handler with irq_id = %d\n",irq_id);
 
     if (misr & GICH_MISR_EOI) {
-        console_printk("[Bao] Inside maintenance handler 1\n");
-        // if(irq_id >= 8192) {
-        //     uint64_t eisr = gich_get_eisr();
-        //     int64_t lr_ind = bit64_ffs(eisr & BIT64_MASK(0, NUM_LRS));
-        //     gich_write_lr(lr_ind, 0);
-        //     console_printk("[BAO] EOIR of LPIs done\n");
-        // } else 
         vgic_handle_trapped_eoir(cpu()->vcpu);
     }
 

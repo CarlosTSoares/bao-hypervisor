@@ -163,25 +163,75 @@ void vgicd_emul_router_access(struct emul_access* acc, struct vgic_reg_handler_i
     }
 }
 
+/* LPI Emulation*/
+/*
+1. Propbase and Pendbaser access
+2. Emulation of priority and enable of LPIs in config table
+3. Emulation of interrupt state in pending table
+
+*/
+
 /* Propbaser and Pendbaser emulation*/
+
+bool proptable_emul_handler(struct emul_access* acc){
+
+    //Verify if VM has LPI
+    console_printk("[Bao] Inside proptable emul\n");
+    size_t offset = acc->addr - cpu()->vcpu->vm->arch.prop_table_addr;
+    console_printk("[BAO] Value of offset 0x%x\n",offset);
+    /*
+    1. Know the LPI number trying to access
+    We can do this by knowing the address offset with base 
+    */
+    if (!acc->write) { //read from proptable
+
+
+    }else{  //write to proptable
+        *(proptable+offset)= vcpu_readreg(cpu()->vcpu, acc->reg);
+    }
+
+    // To-DO error verification
+    return true;
+}
 
 void vgicr_emul_propbaser_access(struct emul_access* acc, struct vgic_reg_handler_info* handlers,
     bool gicr_access, vcpuid_t vgicr_id) 
 {
-    if (!acc->write) {
-        // paddr_t prop_baser_pa;
-        // vaddr_t prop_baser_vm = vcpu_readreg(cpu()->vcpu, acc->reg);
-        // mem_translate(&cpu()->as, (vaddr_t)prop_baser_vm, &prop_baser_pa); //?
-        // gicr->PROPBASER = prop_baser_pa;
-        /*cpu()->vcpu->vm->config->platform.msi ? vcpu_writereg(cpu()->vcpu, acc->reg,gicr[cpu()->id].PROPBASER) :
-                vcpu_writereg(cpu()->vcpu, acc->reg,0);*/
+    if (!acc->write) { // && rCTRL.enableLPIS = 0
+
+
         vcpu_writereg(cpu()->vcpu, acc->reg,gicr[vgicr_id].PROPBASER);
         console_printk("VGIC3: Propbaser read from cpu %d -> 0x%x\n",cpu()->id,gicr[vgicr_id].PROPBASER);
     }else{
 
+        size_t tmp_phy_addr = vcpu_readreg(cpu()->vcpu, acc->reg);
+        size_t ID_bits = tmp_phy_addr & 0x1f;                       //To-do add macro
+
+        //Get the virtual addr
+        size_t propbaser_phy_addr = tmp_phy_addr & 0xFFFFFFFFFF000; //To-do add macro
+        size_t size = GICR_PROPTABLE_SZ(ID_bits);
+        size_t pages = NUM_PAGES(size);
+
+        //get the physical value of the region trying to access
+        console_printk("[BAO] Access register value: 0x%x\n",tmp_phy_addr);
+        console_printk("[BAO] Propbaser virtual value: 0x%x; ID_bits value: 0x%x; Size 0x%x; NUM_PAGES=%d\n",propbaser_phy_addr,ID_bits,size,pages);
+
+        //Unmap the region from VM's space
+        if(vgicr_id == CPU_MASTER) // maybe this isnt correct - specify vm master vcpu
+        {
+            mem_unmap(&cpu()->vcpu->vm->as,(vaddr_t)propbaser_phy_addr,pages,true); //maybe i dont need to unmap
+            console_printk("[BAO] Unnmap proptable's VM region\n");
+        }
+            //can i call a trap to this region without unmap?
+        cpu()->vcpu->vm->arch.prop_table_addr = (vaddr_t)propbaser_phy_addr;
+        //Add emulated memory
+        cpu()->vcpu->vm->arch.proptable_emul = (struct emul_mem){ .va_base = (vaddr_t)propbaser_phy_addr,
+        .size = size,
+        .handler = proptable_emul_handler };
+        vm_emul_add_mem(cpu()->vcpu->vm, &cpu()->vcpu->vm->arch.proptable_emul);
+
         //if(cpu()->vcpu->vm->config.platform.msi)
-            gicr[vgicr_id].PROPBASER = vcpu_readreg(cpu()->vcpu, acc->reg);
-        console_printk("VGIC3: Propbaser write from cpu %d -> 0x%x\n",cpu()->id,gicr[vgicr_id].PROPBASER);
+            //gicr[vgicr_id].PROPBASER = vcpu_readreg(cpu()->vcpu, acc->reg);
     }
 }
 
@@ -357,7 +407,7 @@ void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp,bool msi)
     vm->arch.vgicd.int_num = 32 * (vtyper_itln + 1);
     vm->arch.vgicd.TYPER = ((vtyper_itln << GICD_TYPER_ITLN_OFF) & GICD_TYPER_ITLN_MSK) |
         (((vm->cpu_num - 1) << GICD_TYPER_CPUNUM_OFF) & GICD_TYPER_CPUNUM_MSK) |
-        ((((msi ? 15 : 10) - 1) << GICD_TYPER_IDBITS_OFF) & GICD_TYPER_IDBITS_MSK) | (msi? GICD_TYPER_LPIS : 0); //LPI support
+        ((((msi ? 16 : 10) - 1) << GICD_TYPER_IDBITS_OFF) & GICD_TYPER_IDBITS_MSK) | (msi? GICD_TYPER_LPIS : 0); //LPI support
     vm->arch.vgicd.IIDR = gicd->IIDR;
 
     size_t vgic_int_size = vm->arch.vgicd.int_num * sizeof(struct vgic_int);
@@ -410,6 +460,8 @@ void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp,bool msi)
     vm->arch.icc_sre_emul = (struct emul_reg){ .addr = SYSREG_ENC_ADDR(3, 0, 12, 12, 5),
         .handler = vgic_icc_sre_handler };
     vm_emul_add_reg(vm, &vm->arch.icc_sre_emul);
+
+    /*Prop table memory emulation*/
 
     list_init(&vm->arch.vgic_spilled);
     vm->arch.vgic_spilled_lock = SPINLOCK_INITVAL;

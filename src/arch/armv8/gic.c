@@ -71,6 +71,11 @@ void gicd_init()
 
 void gic_map_mmio();
 
+bool gicd_supports_LPIs(){
+
+    return (gicd->TYPER & 0x20000) ? true: false;
+}
+
 void gic_init()
 {
     if (GIC_VERSION == GICV3) {
@@ -87,32 +92,56 @@ void gic_init()
     cpu_sync_and_clear_msgs(&cpu_glb_sync);
 
     gic_cpu_init();
+
+    //if gicv3
+    if(gicd_supports_LPIs() && cpu()->id == CPU_MASTER)
+    {
+        console_printk("[BAO] Support LPIs in distributor\n");
+        //disable redist LPIs
+        for(cpuid_t cpu_id = 0; cpu_id < PLAT_CPU_NUM;cpu_id++)
+            disable_gicr_lpis(cpu_id); // all redistributor have the same propbaser
+
+        //allocate proptable
+        bool err = gic_alloc_lpi_tables();
+        if(err)
+            ERROR("Can't allocate the LPI tables\n");
+
+        
+        gic_cpu_init_lpis();
+        
+        //enable redist LPIs
+        //enable_gicr_lpis();
+    }
 }
 
 void gic_handle()
 {
-    uint32_t ack = gicc_iar();
+    uint32_t ack = gicc_iar();  //ack
     irqid_t id = bit32_extract(ack, GICC_IAR_ID_OFF, GICC_IAR_ID_LEN);
 
     if (id < GIC_FIRST_SPECIAL_INTID) {
         if(id != 27 && id != 78 && id != 1 && id != 79)
             console_printk("BAO: Interrupt received wiht ID - %d\n",id);
         enum irq_res res = interrupts_handle(id);
-        gicc_eoir(ack);
+        gicc_eoir(ack);         //gic end of interrupt
         if (res == HANDLED_BY_HYP) {
-            gicc_dir(ack);
+            gicc_dir(ack);      //gic desactivate interrupt
         }
     }else {
         console_printk("[BAO] Interrupt received wiht ID out of range - %d\n",id);
-        /*If LPI range*/
+        /*LPI range*/
+
+        /* To-Do
+        - Verify if INTID belongs to VM
+        - Condition if no List register is available
+        */
 
         /*List register available*/
-
         ssize_t lr_ind = -1;
         gic_lr_t lr;
         uint64_t elrsr = gich_get_elrsr();          //locate a usable List register when hypervisor is delivering an interrupt to a VM
         for (size_t i = 0; i < NUM_LRS; i++) {
-            if (bit64_get(elrsr, i)) {  //contains a valid interrupt
+            if (bit64_get(elrsr, i)) {               //contains a valid interrupt
                 lr_ind = i;
                 break;
             }
@@ -129,7 +158,7 @@ void gic_handle()
             lr |= GICH_LR_EOI_BIT;
             lr |= ((gic_lr_t)PEND << GICH_LR_STATE_OFF) & GICH_LR_STATE_MSK;
             gich_write_lr(lr_ind, lr);
-            //gicc_eoir(ack);
+
             console_printk("[Bao] List register updated\n");
         }
         gicc_eoir(ack);

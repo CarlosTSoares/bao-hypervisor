@@ -4,6 +4,8 @@
         "sysregs.h": "c",
         "fences.h": "c",
         "config.h": "c",
-        "string.h": "c"
+        "string.h": "c",
+        "gic.h": "c",
+        "bao.h": "c"
     }
 }
