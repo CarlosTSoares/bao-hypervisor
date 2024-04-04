@@ -14,9 +14,9 @@
 
 extern volatile struct gicd_hw* gicd;
 volatile struct gicr_hw* gicr;
+volatile struct gits_hw* gits;
 
 /*GICv3 LPI configuration table pointer*/
-volatile uint8_t* proptable;
 
 static spinlock_t gicd_lock = SPINLOCK_INITVAL;
 static spinlock_t gicr_lock = SPINLOCK_INITVAL;
@@ -301,41 +301,9 @@ void gic_set_enable(irqid_t int_id, bool en)
     }
 }
 
-bool gic_alloc_lpi_tables()
+/* Map ITS to Bao*/
+inline void gits_map_mmio()
 {
-    uint16_t ID_bits;
-
-    //To-do -  Get the IDbits minimum from its and dist typer
-    ID_bits = (gicd->TYPER & GICD_TYPER_IDBITS_MSK) >> GICD_TYPER_IDBITS_OFF;
-    console_printk("[BAO] Value of ID_bits is 0x%x\n",ID_bits);
-    //alloc the prop table
-    proptable = mem_alloc_page(NUM_PAGES(GICR_PROPTABLE_SZ(ID_bits)), SEC_HYP_GLOBAL, false);
-    console_printk("[BAO] Proptable virtual page @0x%x\n",proptable);
-
-    if(proptable != NULL)
-        return false; //no error
-    else
-        return true;
-}
-
-
-void gic_cpu_init_lpis()
-{
-    paddr_t proptable_pa;
-    
-    // To-do verify ID_bits length
-    size_t ID_bits = (gicd->TYPER & GICD_TYPER_IDBITS_MSK) >> GICD_TYPER_IDBITS_OFF;
-
-    bool err = mem_translate(&cpu()->as,(vaddr_t)proptable,&proptable_pa);
-    if (err)
-        console_printk("[BAO] Physical addr of proptable is 0x%x & ID_bits 0x%x\n",proptable_pa,ID_bits);
-    uint64_t propbaser = (proptable_pa) |
-                    GICR_PROPBASER_RaWaWb |
-                    GICR_PROPBASER_InnerShareable |
-                    (ID_bits & 0x1f);
-    console_printk("[BAO] Propbaser value is 0x%llx\n",propbaser);
-
-    for(cpuid_t cpu_id = 0; cpu_id < PLAT_CPU_NUM;cpu_id++)
-        gicr[cpu_id].PROPBASER = propbaser;
-
+    gits = (void*)mem_alloc_map_dev(&cpu()->as, SEC_HYP_GLOBAL, INVALID_VA,
+        platform.arch.gic.gits_addr, NUM_PAGES(sizeof(struct gits_hw)));
 }

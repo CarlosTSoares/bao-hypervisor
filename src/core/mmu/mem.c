@@ -423,25 +423,18 @@ void mem_unmap(struct addr_space* as, vaddr_t at, size_t num_pages, bool free_pp
             ,sec->beg,sec->shared);
 
     if (sec->shared) {
-        console_printk("[Bao] Before sec lock\n");
         spin_lock(&sec->lock);
     }
-    console_printk("[Bao] Before while\n");
     while (vaddr < top) {
-        console_printk("[Bao] Inside while\n");
         pte_t* pte = pt_get_pte(&as->pt, lvl, vaddr);
         if (pte == NULL) {
-            console_printk("[Bao] Inside err\n");
             ERROR("invalid pte while freeing vpages");
         } else if (!pte_valid(pte)) {
-            console_printk("[Bao] Inside pte_valid\n");
             size_t lvlsz = pt_lvlsize(&as->pt, lvl);
             vaddr += lvlsz;
         } else if (pte_table(&as->pt, pte, lvl)) {
-            console_printk("[Bao] Inside pte_table\n");
             lvl++;
         } else {
-            console_printk("[Bao] Inside elsee\n");
             size_t entry = pt_getpteindex(&as->pt, pte, lvl);
             size_t nentries = pt_nentries(&as->pt, lvl);
             size_t lvlsz = pt_lvlsize(&as->pt, lvl);
@@ -484,7 +477,6 @@ void mem_unmap(struct addr_space* as, vaddr_t at, size_t num_pages, bool free_pp
 
     if (sec->shared) {
         spin_unlock(&sec->lock);
-        console_printk("[Bao] After sec lock\n");
     }
 
     spin_unlock(&as->lock);
