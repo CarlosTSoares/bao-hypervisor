@@ -8,36 +8,6 @@
 
 #include <arch/gic.h>
 
-/*----------- GIC ITS -----------*/
-
-// Define only to GICv3
-// Verify the alignement and the offsets
-
-#define GIC_MAX_TTD               8     //max translation table descriptors
-
-
-struct gits_hw {
-    /*ITS_CTRL_base frame*/
-    uint32_t CTLR;
-    uint32_t IIDR;
-    uint64_t TYPER;
-    uint8_t pad0[0x80 - 0x10];
-    uint64_t CBASER;
-    uint64_t CWRITER;
-    uint64_t CREADR;
-    uint8_t pad1[0x100 - 0x98];
-    uint64_t BASER[GIC_MAX_TTD];
-    uint8_t pad2[0xFFD0 - 0x140];   
-    uint32_t ID[(0x10000 - 0xFFD0) / sizeof(uint32_t)];
-
-    /*translation_base frame - ITS_base + 0x10000*/
-    uint8_t transl_base[0] __attribute__((aligned(0x10000)));
-    uint8_t pad3[0x40 - 0x0];
-    uint32_t TRANSLATER;
-    uint8_t pad4[0x10000 - 0x44];
-} __attribute__((__packed__, aligned(0x10000)));    //64KB-aligned?
-
-extern volatile struct gits_hw* gits;
 
 static inline uint64_t gich_read_lr(size_t i)
 {
@@ -181,6 +151,8 @@ static inline void gicc_dir(uint32_t dir)
     sysreg_icc_dir_el1_write(dir);
 }
 
-inline void gits_map_mmio();
+void gits_map_mmio();
+
+bool its_init();
 
 #endif /* __GICV3_H__ */

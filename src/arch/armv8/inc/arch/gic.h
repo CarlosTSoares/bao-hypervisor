@@ -441,7 +441,47 @@ void gic_maintenance_handler(irqid_t irq_id);
 extern volatile struct gicd_hw* gicd;
 extern volatile struct gicr_hw* gicr;
 
-extern volatile uint8_t* proptable;
+#if (GIC_VERSION == GICV3)
+    /*----------- GIC ITS -----------*/
+
+    // Define only to GICv3
+    // Verify the alignement and the offsets
+
+    #define GIC_MAX_TTD               8     //max translation table descriptors
+
+    #define GITS_CBASER_RaWaWb              (7ULL << 59)
+    #define GITS_CBASER_InnerShareable      (1ULL << 10)
+    #define GITS_CBASER_VALID               (1ULL << 63)
+
+
+    struct gits_hw {
+        /*ITS_CTRL_base frame*/
+        uint32_t CTLR;
+        uint32_t IIDR;
+        uint64_t TYPER;
+        uint8_t pad0[0x80 - 0x10];
+        uint64_t CBASER;
+        uint64_t CWRITER;
+        uint64_t CREADR;
+        uint8_t pad1[0x100 - 0x98];
+        uint64_t BASER[GIC_MAX_TTD];
+        uint8_t pad2[0xFFD0 - 0x140];   
+        uint32_t ID[(0x10000 - 0xFFD0) / sizeof(uint32_t)];
+
+        /*translation_base frame - ITS_base + 0x10000*/
+        uint8_t transl_base[0] __attribute__((aligned(0x10000)));
+        uint8_t pad3[0x40 - 0x0];
+        uint32_t TRANSLATER;
+        uint8_t pad4[0x10000 - 0x44];
+    } __attribute__((__packed__, aligned(0x10000)));    //64KB-aligned?
+
+    extern volatile struct gits_hw* gits;
+    extern struct its_cmd* its_cmdq;
+
+    struct its_cmd{
+        uint64_t cmd[4];
+    };
+#endif
 
 size_t gich_num_lrs();
 

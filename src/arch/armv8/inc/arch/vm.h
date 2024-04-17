@@ -20,6 +20,9 @@ struct arch_vm_platform {
         paddr_t gicd_addr;
         paddr_t gicc_addr;
         paddr_t gicr_addr;
+        #if (GIC_VERSION == GICV3)
+            paddr_t gits_addr;
+        #endif
         size_t interrupt_num;
         bool msi;
     } gic;
@@ -45,6 +48,9 @@ struct vm_arch {
     struct emul_mem vgicr_emul;
     struct emul_reg icc_sgir_emul;
     struct emul_reg icc_sre_emul;
+    #if (GIC_VERSION == GICV3)
+        struct emul_mem vgits_emul;
+    #endif
 };
 
 struct vcpu_arch {

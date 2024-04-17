@@ -834,7 +834,7 @@ struct vgic_reg_handler_info* vgic_get_reg_handler_info(enum vgic_reg_handler_in
 bool vgic_check_reg_alignment(struct emul_access* acc, struct vgic_reg_handler_info* handlers)
 {
     if ((!(handlers->alignment & acc->width) || ((acc->addr & (acc->width - 1)) != 0))) {
-        console_printk("VGIC: In addr 0x%x, algin=0x%x, width=0x%x\n",acc->addr,handlers->alignment,acc->width);
+        console_printk("VGIC: In addr 0x%x, algin=0x%x, width=0x%x, write=%d\n",acc->addr,handlers->alignment,acc->width,acc->write);
         return false;
     } else {
         return true;

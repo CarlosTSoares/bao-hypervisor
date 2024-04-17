@@ -6,6 +6,8 @@
         "config.h": "c",
         "string.h": "c",
         "gic.h": "c",
-        "bao.h": "c"
+        "bao.h": "c",
+        "vgicv3.h": "c",
+        "vm.h": "c"
     }
 }

@@ -81,24 +81,27 @@ void gic_init()
     if (GIC_VERSION == GICV3) {
         sysreg_icc_sre_el2_write(ICC_SRE_SRE_BIT | ICC_SRE_ENB_BIT);    //Enable the system register interface and enable el1 access to icc_sre_el1
         ISB();
-
-        if(gicd_supports_LPIs() && cpu()->id == CPU_MASTER)
-        {
-            //gits_map_mmio();
-        }
     }
 
     if (cpu()->id == CPU_MASTER) {
         gic_map_mmio();
         gicd_init();
         NUM_LRS = gich_num_lrs();
+
+        if(gicd_supports_LPIs()) //don't need gic version condition; macro if def?
+        {
+            console_printk("[BAO] LPI supported\n");
+            gits_map_mmio();
+            //disable its
+            //its_init();
+        }
     }
 
     cpu_sync_and_clear_msgs(&cpu_glb_sync);
 
     gic_cpu_init();
 
-    console_printk("[BAO] Value of propbaser affinity is 0x%x\n",(gicr[cpu()->id].TYPER >> 24) & 0x3);
+    //console_printk("[BAO] Value of propbaser affinity is 0x%x\n",(gicr[cpu()->id].TYPER >> 24) & 0x3);
 
     //if gicv3
     // if(gicd_supports_LPIs() && cpu()->id == CPU_MASTER)

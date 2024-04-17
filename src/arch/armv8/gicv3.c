@@ -16,6 +16,11 @@ extern volatile struct gicd_hw* gicd;
 volatile struct gicr_hw* gicr;
 volatile struct gits_hw* gits;
 
+//TO-DO implement a struct to be easier to process the commands
+#define ITS_CMD_QUEUE_PAGE_SZ 16
+
+struct its_cmd* its_cmdq;
+
 /*GICv3 LPI configuration table pointer*/
 
 static spinlock_t gicd_lock = SPINLOCK_INITVAL;
@@ -302,8 +307,42 @@ void gic_set_enable(irqid_t int_id, bool en)
 }
 
 /* Map ITS to Bao*/
-inline void gits_map_mmio()
+void gits_map_mmio()
 {
     gits = (void*)mem_alloc_map_dev(&cpu()->as, SEC_HYP_GLOBAL, INVALID_VA,
         platform.arch.gic.gits_addr, NUM_PAGES(sizeof(struct gits_hw)));
+}
+
+bool its_init()
+{
+    //TO-DO The system can have more than one ITS
+
+    // paddr_t cmdq_pa;
+
+    // //Alloc the command queue in hypervisor space
+    // console_printk("[BAO-GICv3] Inside ITS init\n");
+
+    // //TO-Do aligned to 64KB
+    // its_cmdq = mem_alloc_page(16, SEC_HYP_GLOBAL, true);
+
+    // if (its_cmdq == NULL)
+    //     ERROR("ITS command line not allocated\n");
+
+    // console_printk("[BAO] Virtual addr of command queue is 0x%x\n",its_cmdq);
+    // //Update the cbaser
+
+    // //Translate to physical addr
+    // bool err = mem_translate(&cpu()->as,(vaddr_t)its_cmdq,&cmdq_pa);
+    // if (!err)
+    //     ERROR("[BAO] Physical addr of command queue is 0x%x \n",cmdq_pa);
+
+    // console_printk("[BAO] Physical addr of command queue is 0x%x and vaddr is 0x%x\n",cmdq_pa,its_cmdq);
+    // uint64_t cbaser = (cmdq_pa |
+    //                 GITS_CBASER_RaWaWb |
+    //                 GITS_CBASER_InnerShareable |
+    //                 (ITS_CMD_QUEUE_PAGE_SZ - 1) |
+    //                 GITS_CBASER_VALID);
+    // console_printk("[BAO] CBaser value is 0x%llx\n",cbaser);
+    return true;
+
 }

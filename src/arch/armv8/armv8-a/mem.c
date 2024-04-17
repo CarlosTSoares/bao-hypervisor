@@ -43,7 +43,7 @@ bool mem_translate(struct addr_space* as, vaddr_t va, paddr_t* pa)
     ISB();
     par = sysreg_par_el1_read();
     sysreg_par_el1_write(par_saved);
-    if (par & PAR_F) {
+    if (par & PAR_F) {      //Address translation results in a fault
         return false;
     } else {
         if (pa != NULL) {

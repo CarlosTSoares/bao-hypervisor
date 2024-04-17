@@ -44,7 +44,7 @@ inline void interrupts_init()
         if (!interrupts_reserve(IPI_CPU_MSG, cpu_msg_handler)) {
             ERROR("Failed to reserve IPI_CPU_MSG interrupt");
         }
-        console_printk("Value of ICH_VTR_EL2.nV4 = 0x%x\n",(sysreg_ich_vtr_el2_read()& 0x100000)>>20);
+        //console_printk("Value of ICH_VTR_EL2.nV4 = 0x%x\n",(sysreg_ich_vtr_el2_read()& 0x100000)>>20);
     }
 
     interrupts_cpu_enable(IPI_CPU_MSG, true);
