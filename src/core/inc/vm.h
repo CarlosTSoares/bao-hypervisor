@@ -97,6 +97,7 @@ struct vm {
     struct vm_io io;
 
     //To-do: add msi here
+    bool msi;
 
     BITMAP_ALLOC(interrupt_bitmap, MAX_INTERRUPTS);
 

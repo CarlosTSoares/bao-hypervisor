@@ -28,8 +28,15 @@
 #define GITS_REG_MASK(ADDR) ((ADDR) & 0x1ffff)
 
 
+/* ITS defines */
+#define ITS_CMD_MAPC            (9)     
+#define ITS_CMD_SYNC            (5)
+#define ITS_CMD_ENC_OFF         (0)
+#define ITS_CMD_ENC_LEN         (8)
+#define ITS_CMD_RDBASE_OFF      (16)
+#define ITS_CMD_RDBASE_LEN      (35)
 
-#define GICD_TYPER_LPIS 0x20000
+static spinlock_t gits_lock = SPINLOCK_INITVAL;
 
 bool vgic_int_has_other_target(struct vcpu* vcpu, struct vgic_int* interrupt)
 {
@@ -91,15 +98,21 @@ void vgic_int_set_route_hw(struct vcpu* vcpu, struct vgic_int* interrupt)
 void vgicr_emul_ctrl_access(struct emul_access* acc, struct vgic_reg_handler_info* handlers,
     bool gicr_access, vcpuid_t vgicr_id)
 {
-    uint32_t val = 0;
-    val |= (gicr[cpu()->id].CTLR & 0x1);
-
     if (!acc->write) {
-        vcpu_writereg(cpu()->vcpu, acc->reg, val);
-        console_printk("VGICv3: rCTRL value readed: 0x%x\n",val);
-    } else {
-        gicr[cpu()->id].CTLR |= (vcpu_readreg(cpu()->vcpu, acc->reg)&0x1);
-        console_printk("VGICv3: rCTRL value set to: 0x%x\n",gicr[cpu()->id].CTLR);
+        if(cpu()->vcpu->vm->msi){
+            cpuid_t pgicr_id = vm_translate_to_pcpuid(cpu()->vcpu->vm, vgicr_id);
+            vcpu_writereg(cpu()->vcpu, acc->reg, gicr[pgicr_id].CTLR & GICR_CTLR_EN_LPIS_MSK);
+            console_printk("VGICv3: rCTRL value readed: 0x%x\n",gicr[pgicr_id].CTLR & GICR_CTLR_EN_LPIS_MSK);
+        } else {
+            vcpu_writereg(cpu()->vcpu, acc->reg, 0); //read as zero
+        }
+    } else {    //if hasnt given the msi config then the VM cannot modify the CTLR.ENABLEBITS
+        if(cpu()->vcpu->vm->msi){
+            cpuid_t pgicr_id = vm_translate_to_pcpuid(cpu()->vcpu->vm, vgicr_id);
+            uint32_t val = gicr[pgicr_id].CTLR & ~(GICR_CTLR_EN_LPIS_MSK);
+            gicr[pgicr_id].CTLR = val | (vcpu_readreg(cpu()->vcpu, acc->reg) & GICR_CTLR_EN_LPIS_MSK); 
+            console_printk("VGICv3: rCTRL value set to: 0x%x\n",gicr[cpu()->id].CTLR);
+        }
     }
 }
 
@@ -151,7 +164,7 @@ void vgicd_emul_router_access(struct emul_access* acc, struct vgic_reg_handler_i
     }
 
     uint64_t route = vgic_int_get_route(cpu()->vcpu, interrupt);
-    if (!acc->write) {
+    if (!acc->write) {  //read route
         if (top_access) {
             vcpu_writereg(cpu()->vcpu, acc->reg, (uint32_t)(route >> 32));
         } else if (word_access) {
@@ -178,21 +191,28 @@ void vgicd_emul_router_access(struct emul_access* acc, struct vgic_reg_handler_i
 void vgicr_emul_propbaser_access(struct emul_access* acc, struct vgic_reg_handler_info* handlers,
     bool gicr_access, vcpuid_t vgicr_id) 
 {
-    if (!acc->write) { // && rCTRL.enableLPIS = 0
-        cpuid_t pgicr_id = vm_translate_to_pcpuid(cpu()->vcpu->vm, vgicr_id);
-        console_printk("Redistributor vID is %d and pID is %d\n",vgicr_id,pgicr_id);
-        if (pgicr_id != INVALID_CPUID) {
-            vcpu_writereg(cpu()->vcpu, acc->reg,gicr[pgicr_id].PROPBASER);
-            console_printk("VGIC3: Propbaser read from cpu %d -> 0x%x\n",cpu()->id,gicr[pgicr_id].PROPBASER);
+    //ensuring that only the VM with MSI assigned can modify this register
+    //When writing, ensure that that the rCTLR.enableLPIs is zero
+    if (!acc->write) {
+        
+        if(cpu()->vcpu->vm->msi)
+        {
+            cpuid_t pgicr_id = vm_translate_to_pcpuid(cpu()->vcpu->vm, vgicr_id);
+            console_printk("Redistributor vID is %d and pID is %d\n",vgicr_id,pgicr_id);
+            if (pgicr_id != INVALID_CPUID) {
+                vcpu_writereg(cpu()->vcpu, acc->reg,gicr[pgicr_id].PROPBASER);
+                console_printk("VGIC3: Propbaser read from cpu %d -> 0x%x\n",cpu()->id,gicr[pgicr_id].PROPBASER);
+            }
+        } else {
+            vcpu_writereg(cpu()->vcpu, acc->reg,0);
         }
 
-        //To-do The gicr_id need to be translated to the physical id
     }else{
-        //if(cpu()->vcpu->vm->config.platform.msi)
-        //To-Do msi condition and get physical translation
         cpuid_t pgicr_id = vm_translate_to_pcpuid(cpu()->vcpu->vm, vgicr_id);
-        console_printk("Redistributor vID is %d and pID is %d\n",vgicr_id,pgicr_id);
-        if (pgicr_id != INVALID_CPUID) {
+        
+        if((pgicr_id != INVALID_CPUID) && cpu()->vcpu->vm->msi && ~(gicr[pgicr_id].CTLR & 0x1))
+        {
+            console_printk("Redistributor vID is %d and pID is %d\n",vgicr_id,pgicr_id);
             gicr[pgicr_id].PROPBASER = vcpu_readreg(cpu()->vcpu, acc->reg);
             console_printk("VGIC3: Propbaser write from cpu %d -> 0x%x\n",cpu()->id,gicr[pgicr_id].PROPBASER);
         }
@@ -203,24 +223,24 @@ void vgicr_emul_pendbaser_access(struct emul_access* acc, struct vgic_reg_handle
     bool gicr_access, vcpuid_t vgicr_id) 
 {
     if (!acc->write) {
-        /*platform.msi == true ? vcpu_writereg(cpu()->vcpu, acc->reg,gicr[cpu()->id].PENDBASER) :
-        vcpu_writereg(cpu()->vcpu, acc->reg,0);*/
+        if(cpu()->vcpu->vm->msi)
+        {
+            cpuid_t pgicr_id = vm_translate_to_pcpuid(cpu()->vcpu->vm, vgicr_id);
 
-        cpuid_t pgicr_id = vm_translate_to_pcpuid(cpu()->vcpu->vm, vgicr_id);
-
-        if (pgicr_id != INVALID_CPUID) {
-            vcpu_writereg(cpu()->vcpu, acc->reg,gicr[pgicr_id].PENDBASER);
+            if (pgicr_id != INVALID_CPUID) {
+                vcpu_writereg(cpu()->vcpu, acc->reg,gicr[pgicr_id].PENDBASER);
+            }
+        } else {
+            vcpu_writereg(cpu()->vcpu, acc->reg,0);
         }
-        
-        //console_printk("VGIC3: Pendbaser read from cpu %d -> 0x%x\n",cpu()->id,gicr[vgicr_id].PENDBASER);
+
     }else {
-        //if(cpu()->vcpu->vm->config.platform.msi)
         cpuid_t pgicr_id = vm_translate_to_pcpuid(cpu()->vcpu->vm, vgicr_id);
 
-        if (pgicr_id != INVALID_CPUID) {
+        if((pgicr_id != INVALID_CPUID) && cpu()->vcpu->vm->msi && ~(gicr[pgicr_id].CTLR & 0x1))
+        {
             gicr[pgicr_id].PENDBASER = vcpu_readreg(cpu()->vcpu, acc->reg);
         }
-        //console_printk("VGIC3: Pendbaser write from cpu %d -> 0x%x\n",cpu()->id,gicr[vgicr_id].PENDBASER);
     }
 }
 
@@ -340,34 +360,14 @@ bool vgicr_emul_handler(struct emul_access* acc)
 }
 
 /*-------------------- ITS -----------------------*/
-/* Propbaser and Pendbaser emulation*/
 
 void vgits_emul_pidr2_access(struct emul_access* acc, struct vgic_reg_handler_info* handlers,
     bool gicr_access, vcpuid_t vgicr_id) 
 {
-    if (!acc->write) { // && rCTRL.enableLPIS = 0 //read only
-        // TO-DO read the value from the physical addr
+    if (!acc->write) {
+        vcpu_writereg(cpu()->vcpu, acc->reg,gits->ID[((acc->addr & 0xff) - 0xd0) / 4]);
 
-        // unsigned long val = 0;
-        // cpuid_t pgicr_id = vm_translate_to_pcpuid(cpu()->vcpu->vm, vgicr_id);
-        // if (pgicr_id != INVALID_CPUID) {
-        //     val = gicr[pgicr_id].ID[((acc->addr & 0xff) - 0xd0) / 4];
-        // vcpu_writereg(cpu()->vcpu, acc->reg, val);
-
-        vcpu_writereg(cpu()->vcpu, acc->reg,gits->ID[((acc->addr & 0xff) - 0xd0) / 4]); //??
-        // console_printk("[BAO-VGIC3] ID index is 0x%x\n",((acc->addr & 0xff) - 0xd0) / 4);
-        // console_printk("[BAO-VGIC3] PIDR2 read from cpu %d -> 0 0x%x\n",cpu()->id,gits->ID[0]);
-        // console_printk("[BAO-VGIC3] PIDR2 read from cpu %d -> 1 0x%x\n",cpu()->id,gits->ID[1]);
-        // console_printk("[BAO-VGIC3] PIDR2 read from cpu %d -> 2 0x%x\n",cpu()->id,gits->ID[2]);
-        // console_printk("[BAO-VGIC3] PIDR2 read from cpu %d -> 3 0x%x\n",cpu()->id,gits->ID[3]);
-        // console_printk("VGIC3: PIDR2 read from cpu %d -> 4 0x%x\n",cpu()->id,gits->ID[4]);
-        // console_printk("VGIC3: PIDR2 read from cpu %d -> 5 0x%x\n",cpu()->id,gits->ID[5]);
         console_printk("VGIC3: PIDR2 read from addr -> 0x%x\n",acc->addr,gits->ID[((acc->addr & 0xff) - 0xd0) / 4]);
-    }else{
-        //if(cpu()->vcpu->vm->config.platform.msi)
-        //To-Do msi condition and get physical translation
-        //gicr[vgicr_id].PROPBASER = vcpu_readreg(cpu()->vcpu, acc->reg);
-        console_printk("[BAO-VGICV3] PIDR2 write from addr 0x%x\n",acc->addr);
     }
 }
 
@@ -387,11 +387,10 @@ void vgits_emul_typer_access(struct emul_access* acc, struct vgic_reg_handler_in
     bool gicr_access, vcpuid_t vgicr_id) 
 {
     if (!acc->write) {
+        //TODO: Get the value of PTA to now the RDbase format
+
         vcpu_writereg(cpu()->vcpu, acc->reg,gits->TYPER);
         console_printk("[BAO-VGICV3] TYPER read from addr 0x%x\n",acc->addr);
-    }else{
-
-        //console_printk("[BAO-VGICV3] TYPER write from addr 0x%x\n",acc->addr);
     }
 }
 
@@ -408,24 +407,15 @@ void vgits_emul_cbaser_access(struct emul_access* acc, struct vgic_reg_handler_i
 
         /*TO-DO
         1. Verify locks and alignments
+        2. Allow the modification of cmd queue base addr
         */
         //paddr_t cmdq_pa=0;
-        size_t tmp_cbaser = vcpu_readreg(cpu()->vcpu, acc->reg);
-        gits->CBASER=tmp_cbaser;
-        vaddr_t cbaser_vaddr = tmp_cbaser & 0xFFFFFFFFFF000;//use macro
-        size_t pages = (tmp_cbaser & 0xff)+ 1;  //number of 4k pages
-        size_t size = pages*0x1000;
+        uint64_t tmp_cbaser = vcpu_readreg(cpu()->vcpu, acc->reg);
+        vaddr_t cbaser_vaddr = tmp_cbaser & GITS_CBASER_PHY_ADDR_MSK;
+        size_t pages = (tmp_cbaser & GITS_CBASER_SIZE_MSK) + 1;
 
-        console_printk("[BAO-VGICV3] Number of command pages:%d,vaddr:0x%lx,size:%d\n",pages,cbaser_vaddr,size);
+        console_printk("[BAO-VGICV3] Number of command pages:%d,vaddr:0x%lx\n",pages,cbaser_vaddr);
 
-
-        //TO-DO - Unmap only once
-        //mem_unmap(&cpu()->vcpu->vm->as,(vaddr_t)cbaser_vaddr,pages,true);
-        //cbaser_vaddr = 0x83000000;
-        console_printk("[BAO-MEM] Cpu as type is %d\n",cpu()->as.type);
-        console_printk("[BAO-MEM] Vm as type is %d\n",cpu()->vcpu->vm->as.type);
-
-        //cbaser_vaddr=0x09000000;
 
         // bool val = mem_translate(&cpu()->as,cbaser_vaddr,&cmdq_pa);
         // if (!val)
@@ -434,87 +424,70 @@ void vgits_emul_cbaser_access(struct emul_access* acc, struct vgic_reg_handler_i
         // console_printk("[BAO] Physical addr of command queue is 0x%lx \n",cmdq_pa);
 
 
-        //Map to the Bao space
-        its_cmdq = (void*)mem_alloc_map_dev(&cpu()->as, SEC_HYP_GLOBAL, INVALID_VA,
-        cbaser_vaddr,pages);
-
-        if(its_cmdq == NULL)
-            ERROR("[BAO] Command queue not mapped to Bao\n");
-
-        // //Create emulated memory
-        // cpu()->vcpu->vm->arch.vgits_cbaser_vaddr = cbaser_vaddr;
-        
-        // //Add emulated memory
-        // cpu()->vcpu->vm->arch.vgits_cmdq_emul = (struct emul_mem){ .va_base = cbaser_vaddr,
-        // .size = size, //TO-DO optimization
-        // .handler = cmd_queue_emul_handler };
-
-        // vm_emul_add_mem(cpu()->vcpu->vm, &cpu()->vcpu->vm->arch.vgits_cmdq_emul);
+        //Map to the Bao space only once
+        if(cpu()->vcpu->vm->arch.its_cmdq == NULL) {
+            cpu()->vcpu->vm->arch.its_cmdq = (void*)mem_alloc_map_dev(&cpu()->as, SEC_HYP_GLOBAL, INVALID_VA,
+            cbaser_vaddr,pages);
+            if(cpu()->vcpu->vm->arch.its_cmdq == NULL)
+                ERROR("[BAO] Command queue not mapped to Bao\n");
+        }
 
 
+        gits->CBASER=tmp_cbaser;
         console_printk("[BAO-VGICV3] CBASER write from addr 0x%x\n",acc->addr);
     }
 }
 
-bool cmd_is_mapc(struct its_cmd* curr_cmd){
-    if(bit64_extract(curr_cmd->cmd[0],0,8)==0x9)
+static inline bool its_cmd(struct its_cmd* curr_cmd, size_t cmd){
+    if(bit64_extract(curr_cmd->cmd[0],ITS_CMD_ENC_OFF,ITS_CMD_ENC_LEN) == cmd)
         return true;
     else
         return false;
+}
+
+static void its_cmd_rdbase_to_phys(struct its_cmd* curr_cmd){
+    
+    //Get the rdbase
+    vcpuid_t vrdbase = bit64_extract(curr_cmd->cmd[2],ITS_CMD_RDBASE_OFF,ITS_CMD_RDBASE_LEN);
+
+    //Translate to the physical red
+    cpuid_t pgicr_id = vm_translate_to_pcpuid(cpu()->vcpu->vm, vrdbase); //ERROR verification
+
+    //update the command
+    curr_cmd->cmd[2] = (curr_cmd->cmd[2] & ~(BIT64_MASK(ITS_CMD_RDBASE_OFF,ITS_CMD_RDBASE_LEN))) | (pgicr_id << ITS_CMD_RDBASE_OFF);     //improve
+    console_printk("[BAO-VGICV3] Value of cmd 2 mapc is 0x%lx\n",curr_cmd->cmd[2]);
 }
 
 void vgits_emul_cwriter_access(struct emul_access* acc, struct vgic_reg_handler_info* handlers,
     bool gicr_access, vcpuid_t vgicr_id) 
 {
     if (!acc->write) {
-        //translate to physical addr
         vcpu_writereg(cpu()->vcpu, acc->reg,gits->CWRITER);
         console_printk("[BAO-VGICV3] CBASER read from addr 0x%x in cpu %d\n",acc->addr,cpu()->id);
     }else{
-        //Get the offset
-        struct its_cmd* curr_cmd = its_cmdq + gits->CWRITER;
-        console_printk("[BAO-VGICV3] Value of command pointed by cwriter in cpu %d is\n"
-                    "1- 0x%lx\n"
-                    "2- 0x%lx\n"    
-                    "3- 0x%lx\n"    
-                    "4- 0x%lx\n",cpu()->id,curr_cmd->cmd[0],curr_cmd->cmd[1],curr_cmd->cmd[2],curr_cmd->cmd[3]);
+        // console_printk("[BAO-VGICV3] Value of command pointed by cwriter in cpu %d is\n"
+        //             "1- 0x%lx\n"
+        //             "2- 0x%lx\n"    
+        //             "3- 0x%lx\n"    
+        //             "4- 0x%lx\n",cpu()->id,curr_cmd->cmd[0],curr_cmd->cmd[1],curr_cmd->cmd[2],curr_cmd->cmd[3]);
 
-        
-        //Is mapc command?
-        if(cmd_is_mapc(curr_cmd)){
-            //Get the rdbase
-            vcpuid_t vrbase = bit64_extract(curr_cmd->cmd[2],16,35);
-            console_printk("[BAO-VGICV3] Value of vRdbaser is 0x%lx\n",vrbase);
+        struct its_cmd* curr_cmd = cpu()->vcpu->vm->arch.its_cmdq + gits->CWRITER;
 
-            //Translate to the physical red
-            cpuid_t pgicr_id = vm_translate_to_pcpuid(cpu()->vcpu->vm, vrbase);
-            console_printk("[BAO-VGICV3] Value of pRdbaser is 0x%lx\n",pgicr_id);
+        if(its_cmd(curr_cmd, ITS_CMD_MAPC)){
 
-            //update the command
-            curr_cmd->cmd[2] = (curr_cmd->cmd[2] & ~(BIT64_MASK(16,35))) | (pgicr_id << 16);     //improve
-            console_printk("[BAO-VGICV3] Value of cmd 2 mapc is 0x%lx\n",curr_cmd->cmd[2]);
+            its_cmd_rdbase_to_phys(curr_cmd);
+            curr_cmd++;
 
-            //Then the sync command
-            console_printk("Value is 0x%lx\n",curr_cmd);
-            curr_cmd += 1;
-            console_printk("Value is 0x%lx\n",curr_cmd);
-            if(bit64_extract(curr_cmd->cmd[0],0,8)==0x5)
+            if(its_cmd(curr_cmd, ITS_CMD_SYNC))
             {
                 console_printk("Inside sync\n");
                 //update the command
-                curr_cmd->cmd[2] = (curr_cmd->cmd[2] & ~(BIT64_MASK(16,35))) | (pgicr_id << 16);     //improve
+                its_cmd_rdbase_to_phys(curr_cmd);
                 console_printk("[BAO-VGICV3] Value of cmd 2 sync is 0x%lx\n",curr_cmd->cmd[2]);
             }
-
         }
         
-
-        console_printk("[BAO-VGICV3] Value of CREADR is 0x%lx\n",gits->CREADR);
-        
-        gits->CWRITER=vcpu_readreg(cpu()->vcpu, acc->reg);
-
-
-        //console_printk("[BAO-VGICV3] CWRITER write from addr 0x%x\n",acc->addr);
+        gits->CWRITER = vcpu_readreg(cpu()->vcpu, acc->reg);
         console_printk("[BAO-VGICV3] CWRITER write from addr 0x%x with the offset 0x%lx\n",acc->addr,gits->CWRITER);
 
     }
@@ -524,14 +497,9 @@ void vgits_emul_creadr_access(struct emul_access* acc, struct vgic_reg_handler_i
     bool gicr_access, vcpuid_t vgicr_id) 
 {
     if (!acc->write) {  //read only
-        //translate to physical addr
         vcpu_writereg(cpu()->vcpu, acc->reg,gits->CREADR);
         console_printk("[BAO-VGICV3] CREADR read from addr 0x%x with the offset 0x%x\n",acc->addr,bit64_extract(gits->CREADR,5,15));
 
-    }else{
-        //translate to virtual
-        // gits->CREADR=vcpu_readreg(cpu()->vcpu, acc->reg);
-        // console_printk("[BAO-VGICV3] CREADR write from cpu %d\n",cpu()->id);
     }
 }
 
@@ -554,31 +522,18 @@ void vgits_emul_baser_access(struct emul_access* acc, struct vgic_reg_handler_in
         0x8080118 - 3 - 00011000
         0x8080120 - 4 - 00100000
         */
-      
-
         vcpu_writereg(cpu()->vcpu, acc->reg,gits->BASER[index]);
         console_printk("[BAO-VGICV3] BASER read from addr 0x%x, index %d\n",acc->addr,index);
     }else{
         gits->BASER[index]=vcpu_readreg(cpu()->vcpu, acc->reg);
         console_printk("[BAO-VGICV3] BASER write from addr 0x%x, index %d with value 0x%lx\n",acc->addr,index,gits->BASER[index]);
-        // if(bit64_extract(gits->BASER[index],56,3)==0x4){
-        //     vaddr_t addr = bit64_extract(gits->BASER[index],12,36) << 12;
-        //     size_t size = bit64_extract(gits->BASER[index],0,8) +1;
-        //     console_printk("[BAO-VGICV3] Collection table allocation with addr 0x%lx and size 0x%x\n",addr,size);
-
-        //      //TO-DO - Unmap only once
-        //     //mem_unmap(&cpu()->vcpu->vm->as,(vaddr_t)addr,size,true);
-        // }
     }
 }
 
 void vgits_emul_translater_access(struct emul_access* acc, struct vgic_reg_handler_info* handlers,
     bool gicr_access, vcpuid_t vgicr_id) 
 {
-    if (!acc->write) { //write only
-        //vcpu_writereg(cpu()->vcpu, acc->reg,gits->CTRANSLATER);
-    }else{
-
+    if(acc->write){
         gits->TRANSLATER=vcpu_readreg(cpu()->vcpu, acc->reg);
         console_printk("[BAO-VGICV3] TRANSLATER write from addr 0x%x\n",acc->addr);
     }
@@ -590,10 +545,6 @@ void vgits_emul_iidr_access(struct emul_access* acc, struct vgic_reg_handler_inf
     if (!acc->write) { //read only
         console_printk("[BAO-VGICV3] CTRANSLATER write from addr 0x%x\n",acc->addr);
         vcpu_writereg(cpu()->vcpu, acc->reg,gits->IIDR);
-    }else{
-
-        //gits->TRANSLATER=vcpu_readreg(cpu()->vcpu, acc->reg);
-        console_printk("[BAO-VGICV3] CTRANSLATER write from addr 0x%x\n",acc->addr);
     }
 }
 
@@ -679,43 +630,31 @@ bool vgits_emul_handler(struct emul_access* acc){
         case GITS_REG_OFF(TRANSLATER):
             handler_info = &vgits_translater_access;
             break;
-        case 0xffe8: //TO-DO improve
-            handler_info = &vgits_pidr2_info;
-            break;
+        // case 0xffe8: //TO-DO improve
+        //     handler_info = &vgits_pidr2_info;
+        //     break;
         default: {
             size_t base_offset = acc->addr - cpu()->vcpu->vm->arch.vgicr_addr;
             size_t acc_offset = GITS_REG_MASK(base_offset);
             if (GITS_IS_REG(BASER, acc_offset)) {
                 handler_info = &vgits_baser_access;
                 //console_printk("[BAO-VGICV3] Inside default ITS emul in address:0x%x\n",acc->addr);
+            }  else if (GITS_IS_REG(ID, acc_offset)) {
+                handler_info = &vgits_pidr2_info;
             } else {
+                handler_info = &razwi_info;
                 console_printk("GICv3: Inside razwi rEmulation in address:0x%x with base_offset=0x%x\n",acc->addr,base_offset);
-            } 
-            
-            
-            
-            //else if (GICR_IS_REG(IPRIORITYR, acc_offset)) {
-            //     handler_info = &vgits_baser_access;
-            // } else if (GICR_IS_REG(ID, acc_offset)) {
-            //     handler_info = &vgicr_pidr_info;
-            // } else {
-            //     handler_info = &razwi_info;
-            //     console_printk("GICv3: Inside razwi rEmulation in address:0x%x with base_offset=0x%x\n",acc->addr,base_offset);
-            // }
-            
+            }             
         }
     }
 
     if (vgic_check_reg_alignment(acc, handler_info)) {
-        // vcpuid_t vgicr_id = vgicr_get_id(acc);
-        // struct vcpu* vcpu =
-        //     vgicr_id == cpu()->vcpu->id ? cpu()->vcpu : vm_get_vcpu(cpu()->vcpu->vm, vgicr_id);
-        //spin_lock(&vcpu->arch.vgic_priv.vgicr.lock);
+        spin_lock(&gits_lock);
             handler_info->reg_access(acc, handler_info, false, 0);
-        //spin_unlock(&vcpu->arch.vgic_priv.vgicr.lock);
+        spin_unlock(&gits_lock);
+
         return true;
     } else {
-        console_printk("GICv3: Not aligned rEmulation in address:0x%x\n",acc->addr);
         return false;
     }
     
@@ -756,16 +695,20 @@ bool vgic_icc_sre_handler(struct emul_access* acc)
     return true;
 }
 
-void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp,bool msi)
+void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp)
 {
     vm->arch.vgicr_addr = vgic_dscrp->gicr_addr;
     vm->arch.vgicd.CTLR = 0;
+    vm->msi = vgic_dscrp->msi;
     size_t vtyper_itln = vgic_get_itln(vgic_dscrp);
     vm->arch.vgicd.int_num = 32 * (vtyper_itln + 1);
     vm->arch.vgicd.TYPER = ((vtyper_itln << GICD_TYPER_ITLN_OFF) & GICD_TYPER_ITLN_MSK) |
         (((vm->cpu_num - 1) << GICD_TYPER_CPUNUM_OFF) & GICD_TYPER_CPUNUM_MSK) |
-        ((((msi ? 16 : 10) - 1) << GICD_TYPER_IDBITS_OFF) & GICD_TYPER_IDBITS_MSK) | (msi? GICD_TYPER_LPIS : 0); //LPI support
+        ((((vm->msi ? 16 : 10) - 1) << GICD_TYPER_IDBITS_OFF) & GICD_TYPER_IDBITS_MSK) |
+        (vm->msi? GICD_TYPER_LPIS_BIT : 0); //LPI support
     vm->arch.vgicd.IIDR = gicd->IIDR;
+
+    console_printk("[BAO-VGICV3] Value of msi is %d\n",vm->msi);
 
     size_t vgic_int_size = vm->arch.vgicd.int_num * sizeof(struct vgic_int);
     vm->arch.vgicd.interrupts = mem_alloc_page(NUM_PAGES(vgic_int_size), SEC_HYP_VM, false);
@@ -797,13 +740,12 @@ void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp,bool msi)
         uint64_t typer = (uint64_t)vcpu->id << GICR_TYPER_PRCNUM_OFF;
         typer |= ((uint64_t)vcpu->arch.vmpidr & MPIDR_AFF_MSK) << GICR_TYPER_AFFVAL_OFF;
         typer |= !!(vcpu->id == vcpu->vm->cpu_num - 1) << GICR_TYPER_LAST_OFF;
-        typer |= (msi ? 0x1 : 0x0);   /*enable PLPIS*/
+        typer |= (vm->msi ? 0x1 : 0x0);   /*enable PLPIS*/
         vcpu->arch.vgic_priv.vgicr.TYPER = typer;
         vcpu->arch.vgic_priv.vgicr.IIDR = gicr[cpu()->id].IIDR;
     }
 
     /*GIC version of cpu interface*/
-
 
     vm->arch.vgicr_emul = (struct emul_mem){ .va_base = vgic_dscrp->gicr_addr,
         .size = ALIGN(sizeof(struct gicr_hw), PAGE_SIZE) * vm->cpu_num,

@@ -213,15 +213,6 @@ static void vm_init_pcie(struct vm* vm, const struct vm_config* config){
         //To-Do assign LPI interrupts
 }
 
-// static void vm_init_msi(struct vm* vm, const struct vm_config* config){
-
-//     if(config->platform.arch.gic.msi) {
-//         /* Map the ITS region to only one guest*/
-//         mem_alloc_map_dev(&vm->as, SEC_VM_ANY,(vaddr_t)platform.arch.gic.gits_addr, platform.arch.gic.gits_addr, 0x20000 / PAGE_SIZE);
-//         //To-Do Add macro for its size
-//     }
-// }
-
 //Map devices to VM address space and assign the interrupts
 //Add devices to IOMMU
 static void vm_init_dev(struct vm* vm, const struct vm_config* config)
@@ -302,7 +293,6 @@ struct vm* vm_init(struct vm_allocation* vm_alloc, const struct vm_config* confi
         vm_init_dev(vm, config);
         vm_init_ipc(vm, config);
         vm_init_pcie(vm, config);
-        //vm_init_msi(vm, config);
     }
 
     cpu_sync_and_clear_msgs(&vm->sync);

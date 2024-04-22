@@ -50,6 +50,7 @@ struct vm_arch {
     struct emul_reg icc_sre_emul;
     #if (GIC_VERSION == GICV3)
         struct emul_mem vgits_emul;
+        struct its_cmd* its_cmdq;
     #endif
 };
 

@@ -79,6 +79,7 @@
 #define GICD_TYPER_IDBITS_OFF     (19)
 #define GICD_TYPER_IDBITS_LEN     (5)
 #define GICD_TYPER_IDBITS_MSK     BIT32_MASK(GICD_TYPER_IDBITS_OFF, GICD_TYPER_IDBITS_LEN)
+#define GICD_TYPER_LPIS_BIT       (1UL << 17)
 
 /* Software Generated Interrupt Register, GICD_SGIR */
 
@@ -143,6 +144,8 @@ struct gicd_hw {
 
 #define GICR_CTRL_DS_BIT              (1 << 6)
 #define GICR_CTRL_DS_DPG1NS           (1 << 25)
+#define GICR_CTLR_EN_LPIS_OFF         (0)
+#define GICR_CTLR_EN_LPIS_MSK         (BIT32_MASK(GICR_CTLR_EN_LPIS_OFF, 1))
 #define GICR_TYPER_LAST_OFF           (4)
 #define GICR_TYPER_PRCNUM_OFF         (8)
 #define GICR_TYPER_AFFVAL_OFF         (32)
@@ -153,7 +156,7 @@ struct gicd_hw {
 #define GICR_PROPBASER_SHAREABILITY_OFF         (10)
 #define GICR_PROPBASER_INNERCACHE_OFF           (7)
 #define GICR_PROPBASER_InnerShareable           (1ULL << GICR_PROPBASER_SHAREABILITY_OFF)
-#define GICR_PROPBASER_RaWaWb    (7ULL << GICR_PROPBASER_INNERCACHE_OFF)
+#define GICR_PROPBASER_RaWaWb                   (7ULL << GICR_PROPBASER_INNERCACHE_OFF)
 #define GICR_PROPTABLE_SZ(IDbits)               ((1<<(IDbits+1)) - 8192) //maybe not here
 
 
@@ -452,6 +455,11 @@ extern volatile struct gicr_hw* gicr;
     #define GITS_CBASER_RaWaWb              (7ULL << 59)
     #define GITS_CBASER_InnerShareable      (1ULL << 10)
     #define GITS_CBASER_VALID               (1ULL << 63)
+    #define GITS_CBASER_PHY_ADDR_OFF        (12)
+    #define GITS_CBASER_PHY_ADDR_LEN        (40)
+
+    #define GITS_CBASER_SIZE_MSK            (0xff)
+    #define GITS_CBASER_PHY_ADDR_MSK        (BIT64_MASK(GITS_CBASER_PHY_ADDR_OFF,GITS_CBASER_PHY_ADDR_LEN))
 
 
     struct gits_hw {
@@ -476,7 +484,6 @@ extern volatile struct gicr_hw* gicr;
     } __attribute__((__packed__, aligned(0x10000)));    //64KB-aligned?
 
     extern volatile struct gits_hw* gits;
-    extern struct its_cmd* its_cmdq;
 
     struct its_cmd{
         uint64_t cmd[4];

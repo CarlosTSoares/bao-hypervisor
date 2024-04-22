@@ -71,7 +71,7 @@ struct vgic_priv {
     struct vgic_int interrupts[GIC_CPU_PRIV];
 };
 
-void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp,bool msi);
+void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp);
 void vgic_cpu_init(struct vcpu* vcpu);
 void vgic_set_hw(struct vm* vm, irqid_t id);
 void vgic_inject(struct vcpu* vcpu, irqid_t id, vcpuid_t source);

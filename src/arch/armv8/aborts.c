@@ -19,21 +19,15 @@ void aborts_data_lower(unsigned long iss, unsigned long far, unsigned long il, u
 
 
     unsigned long DSFC = bit64_extract(iss, ESR_ISS_DA_DSFC_OFF, ESR_ISS_DA_DSFC_LEN) & (0xf << 2);
-    size_t WnR = bit64_extract(iss, 0x6, 0x1);
-    size_t EA = bit64_extract(iss, 0x9, 0x1);
-    size_t VNCR = bit64_extract(iss, 13, 0x1);
 
     if (!(iss & ESR_ISS_DA_ISV_BIT) || (iss & ESR_ISS_DA_FnV_BIT)) {
-        console_printk("[BAO] Value of ISV:0x%x; Value of FnV:0x%x\n",iss & ESR_ISS_DA_ISV_BIT,iss & ESR_ISS_DA_FnV_BIT);
-        console_printk("[BAO] Value of DFSC is 0x%x, WnR 0x%x, EA 0x%x\n",DSFC,WnR,EA);
-        console_printk("[BAO] Value of iss 0x%lx and VNCR is 0x%x and il 0x%x\n",iss,VNCR,il);
         ERROR("no information to handle data abort (0x%x)", far);
     }
 
     if (DSFC != ESR_ISS_DA_DSFC_TRNSLT && DSFC != ESR_ISS_DA_DSFC_PERMIS) {
         ERROR("data abort is not translation fault - cant deal with it");
     }
-    //console_printk("[BAO] Value of iss 0x%lx and VNCR is 0x%x\n",iss,VNCR);
+
     vaddr_t addr = far;
     emul_handler_t handler = vm_emul_get_mem(cpu()->vcpu->vm, addr);
     if (handler != NULL) {

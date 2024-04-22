@@ -16,15 +16,12 @@ extern volatile struct gicd_hw* gicd;
 volatile struct gicr_hw* gicr;
 volatile struct gits_hw* gits;
 
-//TO-DO implement a struct to be easier to process the commands
-#define ITS_CMD_QUEUE_PAGE_SZ 16
-
-struct its_cmd* its_cmdq;
 
 /*GICv3 LPI configuration table pointer*/
 
 static spinlock_t gicd_lock = SPINLOCK_INITVAL;
 static spinlock_t gicr_lock = SPINLOCK_INITVAL;
+
 
 size_t NUM_LRS;
 
@@ -312,6 +309,10 @@ void gits_map_mmio()
     gits = (void*)mem_alloc_map_dev(&cpu()->as, SEC_HYP_GLOBAL, INVALID_VA,
         platform.arch.gic.gits_addr, NUM_PAGES(sizeof(struct gits_hw)));
 }
+
+
+
+
 
 bool its_init()
 {
