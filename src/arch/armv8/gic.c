@@ -95,8 +95,6 @@ void gic_handle()
     irqid_t id = bit32_extract(ack, GICC_IAR_ID_OFF, GICC_IAR_ID_LEN);
 
     if (id < GIC_FIRST_SPECIAL_INTID) {
-        if(id != 27)
-            console_printk("BAO: Interrupt received wiht ID - %d\n",id);
         enum irq_res res = interrupts_handle(id);
         gicc_eoir(ack);
         if (res == HANDLED_BY_HYP) {
