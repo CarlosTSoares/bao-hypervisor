@@ -82,6 +82,8 @@ size_t mem_cpu_boot_alloc_size();
 
 void as_arch_init(struct addr_space* as);
 bool mem_translate(struct addr_space* as, vaddr_t va, paddr_t* pa);
+void mem_guest_ipa_translate(void* va, uint64_t* physical_address);
+
 
 extern struct list page_pool_list;
 

@@ -153,11 +153,20 @@ struct gicd_hw {
 #define GICR_WAKER_ChildrenASleep_BIT (0x4)
 
 #define GICR_PROPBASER_PHY_OFF                  (12)
+#define GICR_PROPBASER_PHY_LEN                  (40)
 #define GICR_PROPBASER_SHAREABILITY_OFF         (10)
 #define GICR_PROPBASER_INNERCACHE_OFF           (7)
 #define GICR_PROPBASER_InnerShareable           (1ULL << GICR_PROPBASER_SHAREABILITY_OFF)
 #define GICR_PROPBASER_RaWaWb                   (7ULL << GICR_PROPBASER_INNERCACHE_OFF)
+#define GICR_PROPBASER_PHY_ADDR_MSK        (BIT64_MASK(GICR_PROPBASER_PHY_OFF,GICR_PROPBASER_PHY_LEN))
+
+#define GICR_PENDBASER_PHY_OFF                  (16)
+#define GICR_PENDBASER_PHY_LEN                  (36)
+#define GICR_PENDBASER_PHY_ADDR_MSK        (BIT64_MASK(GICR_PENDBASER_PHY_OFF,GICR_PENDBASER_PHY_LEN))
+
+
 #define GICR_PROPTABLE_SZ(IDbits)               ((1<<(IDbits+1)) - 8192) //maybe not here
+
 
 
 struct gicr_hw {
@@ -461,7 +470,21 @@ extern volatile struct gicr_hw* gicr;
     #define GITS_CBASER_SIZE_MSK            (0xff)
     #define GITS_CBASER_PHY_ADDR_MSK        (BIT64_MASK(GITS_CBASER_PHY_ADDR_OFF,GITS_CBASER_PHY_ADDR_LEN))
 
-
+    #define GITS_BASER_VALID_BIT            (1ULL << 63)
+    #define GITS_BASER_PHY_ADDR_OFF         (12)
+    #define GITS_BASER_PHY_ADDR_LEN         (36)
+    #define GITS_BASER_PHY_ADDR_MSK         (BIT64_MASK(GITS_BASER_PHY_ADDR_OFF,GITS_BASER_PHY_ADDR_LEN))
+    #define GITS_BASER_TYPE_OFF             (56)
+    #define GITS_BASER_TYPE_LEN             (3)
+    #define GITS_BASER_TYPE_MASK            (BIT64_MASK(GITS_BASER_TYPE_OFF,GITS_BASER_TYPE_LEN))
+    #define GITS_BASER_ENTRY_SZ_OFF         (48)
+    #define GITS_BASER_ENTRY_SZ_LEN         (5)
+    #define GITS_BASER_ENTRY_SZ_MASK        (BIT64_MASK(GITS_BASER_ENTRY_SZ_OFF,GITS_BASER_ENTRY_SZ_LEN))
+    #define GITS_BASER_PAGE_SZ_OFF          (56)
+    #define GITS_BASER_PAGE_SZ_LEN          (3)
+    #define GITS_BASER_PAGE_SZ_MASK         (BIT64_MASK(GITS_BASER_PAGE_SZ_OFF,GITS_BASER_PAGE_SZ_LEN))
+    #define GITS_BASER_RO_MASK              (GITS_BASER_TYPE_MASK | GITS_BASER_ENTRY_SZ_MASK | GITS_BASER_PAGE_SZ_MASK)
+    
     struct gits_hw {
         /*ITS_CTRL_base frame*/
         uint32_t CTLR;

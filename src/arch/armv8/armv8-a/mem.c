@@ -52,3 +52,18 @@ bool mem_translate(struct addr_space* as, vaddr_t va, paddr_t* pa)
         return true;
     }
 }
+
+void mem_guest_ipa_translate(void* va, uint64_t* physical_address)
+{
+    uint64_t tmp = 0, tmp2 = 0;
+    tmp = sysreg_sctlr_el1_read();
+    tmp2 = tmp & ~(1ULL << 0);
+    sysreg_sctlr_el1_write(tmp2);
+    ISB();
+    asm volatile("AT S12E1W, %0" ::"r"(va));
+    ISB();
+    sysreg_sctlr_el1_write(tmp);
+    *physical_address =
+        (sysreg_par_el1_read() & PAR_PA_MSK) | (((uint64_t)va) & (PAGE_SIZE - 1));
+}
+

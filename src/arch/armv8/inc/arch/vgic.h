@@ -61,6 +61,8 @@ struct vgicr {
     uint64_t TYPER;
     uint32_t CTLR;
     uint32_t IIDR;
+    uint64_t PROPBASER;
+    uint64_t PENDBASER;
 };
 
 struct vgic_priv {
@@ -70,6 +72,15 @@ struct vgic_priv {
     irqid_t curr_lrs[GIC_NUM_LIST_REGS];
     struct vgic_int interrupts[GIC_CPU_PRIV];
 };
+
+#if (GIC_VERSION == GICV3)
+    struct vgic_its{
+        spinlock_t lock;
+        struct its_cmd* its_cmdq;
+        uint64_t CBASER;
+        uint64_t BASER[GIC_MAX_TTD];    
+    };
+#endif
 
 void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp);
 void vgic_cpu_init(struct vcpu* vcpu);

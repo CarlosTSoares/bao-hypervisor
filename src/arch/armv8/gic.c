@@ -73,7 +73,7 @@ void gic_map_mmio();
 
 bool gicd_supports_LPIs(){
 
-    return (gicd->TYPER & 0x20000) ? true: false;
+    return (gicd->TYPER & GICD_TYPER_LPIS_BIT) ? true: false;
 }
 
 void gic_init()
@@ -92,8 +92,6 @@ void gic_init()
         {
             console_printk("[BAO] LPI supported\n");
             gits_map_mmio();
-            //disable its
-            //its_init();
         }
     }
 
