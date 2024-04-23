@@ -785,12 +785,6 @@ void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp)
         .handler = vgicd_emul_handler };
     vm_emul_add_mem(vm, &vm->arch.vgicd_emul);
 
-    for (size_t index = 0; index < GIC_MAX_TTD; index++) {
-        //TODO -  Verify if flat tables are supported and manage Indirect bit
-
-        vm->arch.vgic_its.BASER[index]= (gits->BASER[index] & GITS_BASER_RO_MASK);
-    }
-
     /* Initialize virtual its registers*/
     for (vcpuid_t vcpuid = 0; vcpuid < vm->cpu_num; vcpuid++) {
         struct vcpu* vcpu = vm_get_vcpu(vm, vcpuid);
@@ -810,6 +804,11 @@ void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp)
 
     /*ITS emul */
     if(vm->msi){
+        for (size_t index = 0; index < GIC_MAX_TTD; index++) {
+            //TODO -  Verify if flat tables are supported and manage Indirect bit
+
+            vm->arch.vgic_its.BASER[index]= (gits->BASER[index] & GITS_BASER_RO_MASK);
+        }
         vm->arch.vgits_emul = (struct emul_mem){ .va_base = vgic_dscrp->gits_addr,
             .size = ALIGN(sizeof(struct gits_hw), PAGE_SIZE),
             .handler = vgits_emul_handler };
