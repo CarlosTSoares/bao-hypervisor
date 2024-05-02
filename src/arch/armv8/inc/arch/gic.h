@@ -216,6 +216,17 @@ struct gicr_hw {
     uint32_t IGRPMODR0;
     uint8_t pad16[0x0e00 - 0xd04];
     uint32_t NSACR;
+
+    /* VLPI_base frame - only if gicv4 available*/
+    uint8_t vlpi_base[0] __attribute__((aligned(0x10000)));
+    uint8_t pad17[0x70 - 0x00];
+    uint64_t VPROPBASER;
+    uint64_t VPENDBASER;
+    uint8_t pad18[0x10000 - 0x80];
+
+    /* Reserved_base frame - only if gicv4 available*/
+    uint8_t reserved_base[0] __attribute__((aligned(0x10000)));
+    uint8_t pad19[0x10000];
 } __attribute__((__packed__, aligned(0x10000)));
 
 /* CPU Interface Control Register, GICC_CTLR */
@@ -461,6 +472,8 @@ extern volatile struct gicr_hw* gicr;
 
     #define GIC_MAX_TTD               8     //max translation table descriptors
 
+    #define GITS_TYPER_VIRT_MSK             (1ULL << 1)
+
     #define GITS_CBASER_RaWaWb              (7ULL << 59)
     #define GITS_CBASER_InnerShareable      (1ULL << 10)
     #define GITS_CBASER_VALID               (1ULL << 63)
@@ -484,6 +497,9 @@ extern volatile struct gicr_hw* gicr;
     #define GITS_BASER_PAGE_SZ_LEN          (3)
     #define GITS_BASER_PAGE_SZ_MASK         (BIT64_MASK(GITS_BASER_PAGE_SZ_OFF,GITS_BASER_PAGE_SZ_LEN))
     #define GITS_BASER_RO_MASK              (GITS_BASER_TYPE_MASK | GITS_BASER_ENTRY_SZ_MASK | GITS_BASER_PAGE_SZ_MASK)
+
+  
+    #define GIC_HAS_VLPI(gits)		(!!((gits)->TYPER & GITS_TYPER_VIRT_MSK))
     
     struct gits_hw {
         /*ITS_CTRL_base frame*/

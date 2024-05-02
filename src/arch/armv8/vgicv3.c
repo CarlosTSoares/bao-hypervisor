@@ -803,12 +803,24 @@ void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp)
     vm_emul_add_mem(vm, &vm->arch.vgicr_emul);
 
     /*ITS emul */
-    if(vm->msi){
+    if(vm->msi && GIC_HAS_VLPI(gits)){
         for (size_t index = 0; index < GIC_MAX_TTD; index++) {
             //TODO -  Verify if flat tables are supported and manage Indirect bit
-
-            vm->arch.vgic_its.BASER[index]= (gits->BASER[index] & GITS_BASER_RO_MASK);
+            if(bit64_extract(gits->BASER[index], GITS_BASER_TYPE_OFF, GITS_BASER_TYPE_LEN) == 0x2)
+            {
+                console_printk("[BAO-VGICV3] VPE table found\n");
+                vm->arch.vgic_its.BASER[index]= 0;
+            } else {
+                vm->arch.vgic_its.BASER[index]= (gits->BASER[index] & GITS_BASER_RO_MASK);
+            }
         }
+
+        //uint64_t typer =
+
+        vm->arch.vgic_its.TYPER = gits->TYPER & ~GITS_TYPER_VIRT_MSK;
+        console_printk("[BAO-VGICV3] Value of gits ptyper is 0x%lx\n",gits->TYPER);
+        console_printk("[BAO-VGICV3] Value of gits vtyper is 0x%lx\n",vm->arch.vgic_its.TYPER);
+
         vm->arch.vgits_emul = (struct emul_mem){ .va_base = vgic_dscrp->gits_addr,
             .size = ALIGN(sizeof(struct gits_hw), PAGE_SIZE),
             .handler = vgits_emul_handler };

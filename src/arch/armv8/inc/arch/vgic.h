@@ -78,6 +78,7 @@ struct vgic_priv {
         spinlock_t lock;
         struct its_cmd* its_cmdq;
         uint64_t CBASER;
+        uint64_t TYPER;
         uint64_t BASER[GIC_MAX_TTD];    
     };
 #endif
