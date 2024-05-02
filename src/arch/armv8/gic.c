@@ -88,7 +88,7 @@ void gic_init()
         gicd_init();
         NUM_LRS = gich_num_lrs();
 
-        if(gicd_supports_LPIs()) //don't need gic version condition; macro if def?
+        if(gicd_supports_LPIs()) //don't need gic version condition
         {
             console_printk("[BAO] LPI supported\n");
             gits_map_mmio();
@@ -130,8 +130,8 @@ void gic_handle()
     irqid_t id = bit32_extract(ack, GICC_IAR_ID_OFF, GICC_IAR_ID_LEN);
 
     if (id < GIC_FIRST_SPECIAL_INTID) {
-        if(id != 27 && id != 78 && id != 1 && id != 79)
-            console_printk("BAO: Interrupt received wiht ID - %d\n",id);
+        // if(id != 27 && id != 78 && id != 1 && id != 79)
+        //     console_printk("BAO: Interrupt received wiht ID - %d\n",id);
         enum irq_res res = interrupts_handle(id);
         gicc_eoir(ack);         //gic end of interrupt
         if (res == HANDLED_BY_HYP) {
