@@ -144,6 +144,7 @@ void vgicr_emul_pidr_access(struct emul_access* acc, struct vgic_reg_handler_inf
         cpuid_t pgicr_id = vm_translate_to_pcpuid(cpu()->vcpu->vm, vgicr_id);
         if (pgicr_id != INVALID_CPUID) {
             val = gicr[pgicr_id].ID[((acc->addr & 0xff) - 0xd0) / 4];
+            console_printk("ID of redist is 0x%x\n",val);
         }
         vcpu_writereg(cpu()->vcpu, acc->reg, val);
     }
@@ -396,9 +397,11 @@ void vgits_emul_pidr2_access(struct emul_access* acc, struct vgic_reg_handler_in
     bool gicr_access, vcpuid_t vgicr_id) 
 {
     if (!acc->write) {
-        vcpu_writereg(cpu()->vcpu, acc->reg,gits->ID[((acc->addr & 0xff) - 0xd0) / 4]);
+        //vcpu_writereg(cpu()->vcpu, acc->reg,gits->ID[((acc->addr & 0xff) - 0xd0) / 4]);
+        //To-Do: Read the virtual value
+        vcpu_writereg(cpu()->vcpu, acc->reg,0x3b);
 
-        console_printk("VGIC3: PIDR2 read from addr -> 0x%x\n",acc->addr,gits->ID[((acc->addr & 0xff) - 0xd0) / 4]);
+        console_printk("VGIC3: PIDR2 read from addr 0x%x-> 0x%x\n",acc->addr,gits->ID[((acc->addr & 0xff) - 0xd0) / 4]);
     }
 }
 
@@ -418,7 +421,7 @@ void vgits_emul_typer_access(struct emul_access* acc, struct vgic_reg_handler_in
     bool gicr_access, vcpuid_t vgicr_id) 
 {
     if (!acc->write) {
-        //TODO: Get the value of PTA to now the RDbase format
+        //TODO: Get the value of PTA to know the RDbase format
 
         vcpu_writereg(cpu()->vcpu, acc->reg,gits->TYPER);
         console_printk("[BAO-VGICV3] TYPER read from addr 0x%x\n",acc->addr);
@@ -815,7 +818,7 @@ void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp)
             }
         }
 
-        //uint64_t typer =
+        //TODO - Create the PIDR2 and TYPER virtual register to the VM
 
         vm->arch.vgic_its.TYPER = gits->TYPER & ~GITS_TYPER_VIRT_MSK;
         console_printk("[BAO-VGICV3] Value of gits ptyper is 0x%lx\n",gits->TYPER);
