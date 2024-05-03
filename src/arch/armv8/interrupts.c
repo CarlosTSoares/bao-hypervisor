@@ -61,3 +61,18 @@ void interrupts_arch_vm_assign(struct vm* vm, irqid_t id)
 {
     vgic_set_hw(vm, id);
 }
+
+//MSI
+
+// bool interrupts_arch_msi_init(struct vm* vm){
+//     // if(GIC_HAS_VLPI(gits)){
+//     //     //Alloc vtables
+
+//     //     //Init VLPI
+
+//     //     return false;
+//     // } else {
+//     //     return true;
+//     // }
+//     return false;
+// }

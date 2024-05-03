@@ -431,7 +431,8 @@ void vgicd_emul_pidr_access(struct emul_access* acc, struct vgic_reg_handler_inf
     bool gicr_access, cpuid_t vgicr_id)
 {
     if (!acc->write) {
-        vcpu_writereg(cpu()->vcpu, acc->reg, gicd->ID[((acc->addr & 0xff) - 0xd0) / 4]);
+        //vcpu_writereg(cpu()->vcpu, acc->reg, gicd->ID[((acc->addr & 0xff) - 0xd0) / 4]);
+        vcpu_writereg(cpu()->vcpu, acc->reg, 0x3b);
     }
 }
 

@@ -143,8 +143,8 @@ void vgicr_emul_pidr_access(struct emul_access* acc, struct vgic_reg_handler_inf
         unsigned long val = 0;
         cpuid_t pgicr_id = vm_translate_to_pcpuid(cpu()->vcpu->vm, vgicr_id);
         if (pgicr_id != INVALID_CPUID) {
-            val = gicr[pgicr_id].ID[((acc->addr & 0xff) - 0xd0) / 4];
-            console_printk("ID of redist is 0x%x\n",val);
+            //val = gicr[pgicr_id].ID[((acc->addr & 0xff) - 0xd0) / 4];
+            val=0x3b;
         }
         vcpu_writereg(cpu()->vcpu, acc->reg, val);
     }
