@@ -246,19 +246,19 @@ static void vm_init_dev(struct vm* vm, const struct vm_config* config)
     }
 }
 
-// static void vm_init_msi(struct vm* vm, const struct vm_config* config){
-//     bool err = 0;
-//     console_printk("VM is 0x%x\n",vm->msi);
+static void vm_init_msi(struct vm* vm, const struct vm_config* config){
+    bool err = 0;
+    console_printk("VM is 0x%x\n",vm->msi);
 
-//     if(vm->msi)
-//         err = interrupts_msi_init(vm);
+    if(vm->msi)
+        err = interrupts_msi_init(vm);
 
-//     if(err)
-//         ERROR("[BAO] ERROR INITIALIZING MSI\n");
+    if(err)
+        ERROR("[BAO] ERROR INITIALIZING MSI\n");
 
-//     console_printk("[BAO-VM] MSI Initialized\n");
+    console_printk("[BAO-VM] MSI Initialized\n");
 
-// }
+}
 
 static struct vm* vm_allocation_init(struct vm_allocation* vm_alloc)
 {
@@ -307,7 +307,7 @@ struct vm* vm_init(struct vm_allocation* vm_alloc, const struct vm_config* confi
         vm_init_dev(vm, config);
         vm_init_ipc(vm, config);
         vm_init_pcie(vm, config);
-        //vm_init_msi(vm,config);
+        vm_init_msi(vm,config);
     }
 
     cpu_sync_and_clear_msgs(&vm->sync);

@@ -119,6 +119,6 @@ bool interrupts_reserve(irqid_t int_id, irq_handler_t handler)
 
 //MSI
 
-// bool interrupts_msi_init(struct vm* vm){
-//     return interrupts_arch_msi_init(vm);
-// }
+bool interrupts_msi_init(struct vm* vm){
+    return interrupts_arch_msi_init(vm);
+}

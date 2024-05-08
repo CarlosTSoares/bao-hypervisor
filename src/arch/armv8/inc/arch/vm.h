@@ -59,6 +59,7 @@ struct vcpu_arch {
     struct vgic_priv vgic_priv;
     struct list vgic_spilled;
     struct psci_ctx psci_ctx;
+    vaddr_t* vgits_vpendTable;
 };
 
 struct vcpu* vm_get_vcpu_by_mpidr(struct vm* vm, unsigned long mpidr);

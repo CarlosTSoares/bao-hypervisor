@@ -168,6 +168,8 @@ struct gicd_hw {
 #define GICR_PROPTABLE_SZ(IDbits)               ((1<<(IDbits+1)) - 8192) //maybe not here
 
 
+#define GICR_VPENDBASER_IDAI_BIT                (1ULL << 62)
+#define GICR_VPENDBASER_VAL_BIT                 (1ULL << 63)
 
 struct gicr_hw {
     /* RD_base frame */
