@@ -92,6 +92,8 @@ void gic_init()
         {
             console_printk("[BAO] LPI supported\n");
             gits_map_mmio();
+            if(GIC_HAS_VLPI(gits))    //direct injection supported
+                gits_init_vPET();        //initialized vPET
         }
     }
 
@@ -253,4 +255,39 @@ void gicd_set_enable(irqid_t int_id, bool en)
     } else {
         gicd->ICENABLER[reg_ind] = bit;
     }
+}
+
+void its_encode_cmd(struct its_cmd *cmd, uint8_t cmd_id){
+    its_mask_encode(&cmd->cmd[0],cmd_id,0,8);
+}
+void its_encode_vpe_id(struct its_cmd *cmd, uint16_t vpe_id){
+    its_mask_encode(&cmd->cmd[1],vpe_id,32,16); 
+}
+void its_encode_valid(struct its_cmd *cmd, size_t val){
+    its_mask_encode(&cmd->cmd[2],val,63,1); 
+}
+void its_encode_target(struct its_cmd *cmd, uint64_t target){
+    its_mask_encode(&cmd->cmd[2],target,16,36);  
+}
+void its_encode_vpt_addr(struct its_cmd *cmd, uint64_t vpt_addr){
+    its_mask_encode(&cmd->cmd[3],vpt_addr,16,36); 
+}
+void its_encode_vpt_size(struct its_cmd *cmd, uint8_t vpt_sz){
+    its_mask_encode(&cmd->cmd[2],vpt_sz-1,0,5);
+}
+void its_encode_device_id(struct its_cmd *cmd, uint32_t dev_id)
+{
+    its_mask_encode(&cmd->cmd[0],dev_id,32,32);
+}
+void its_encode_event_id(struct its_cmd *cmd, uint32_t event_id)
+{
+    its_mask_encode(&cmd->cmd[1],event_id,0,32);
+}
+void its_encode_db_id(struct its_cmd *cmd, uint32_t db_id)
+{
+    its_mask_encode(&cmd->cmd[2],db_id,32,32);
+}
+void its_encode_virt_id(struct its_cmd *cmd, uint32_t virt_id)
+{
+    its_mask_encode(&cmd->cmd[2],virt_id,0,32);
 }

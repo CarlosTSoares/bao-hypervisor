@@ -152,6 +152,7 @@ static inline void gicc_dir(uint32_t dir)
 }
 
 void gits_map_mmio();
+void gits_init_vPET();
 
 bool its_init();
 

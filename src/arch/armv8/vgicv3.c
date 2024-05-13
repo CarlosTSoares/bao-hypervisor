@@ -28,6 +28,10 @@
 #define GITS_REG_MASK(ADDR) ((ADDR) & 0x1ffff)
 
 
+#define GITS_CMD_MASK(CMD)  (bit64_extract(CMD->cmd[0],ITS_CMD_ENC_OFF,ITS_CMD_ENC_LEN))
+
+
+
 /* ITS defines */
 #define ITS_CMD_MAPC            (9)     
 #define ITS_CMD_SYNC            (5)
@@ -232,6 +236,10 @@ void vgicr_emul_propbaser_access(struct emul_access* acc, struct vgic_reg_handle
             cpu()->vcpu->arch.vgic_priv.vgicr.PROPBASER = tmp;
             gicr[pgicr_id].PROPBASER = propbaser_paddr;
             console_printk("VGIC3: Propbaser write from cpu %d -> 0x%x\n",cpu()->id,gicr[pgicr_id].PROPBASER);
+
+            //Assign the same table to the vpropbaser
+            //gicr[pgicr_id].VPROPBASER = propbaser_paddr;
+            console_printk("VGIC3: VPropbaser write from cpu %d -> 0x%x\n",cpu()->id,gicr[pgicr_id].VPROPBASER);
         }
     }
 }
@@ -475,24 +483,82 @@ void vgits_emul_cbaser_access(struct emul_access* acc, struct vgic_reg_handler_i
     }
 }
 
-static inline bool its_cmd(struct its_cmd* curr_cmd, size_t cmd){
-    if(bit64_extract(curr_cmd->cmd[0],ITS_CMD_ENC_OFF,ITS_CMD_ENC_LEN) == cmd)
-        return true;
-    else
-        return false;
+// static inline bool its_cmd(struct its_cmd* curr_cmd, size_t cmd){
+//     if(bit64_extract(curr_cmd->cmd[0],ITS_CMD_ENC_OFF,ITS_CMD_ENC_LEN) == cmd)
+//         return true;
+//     else
+//         return false;
+// }
+
+// static void its_cmd_rdbase_to_phys(struct its_cmd* curr_cmd){
+    
+//     //Get the rdbase
+//     vcpuid_t vrdbase = bit64_extract(curr_cmd->cmd[2],ITS_CMD_RDBASE_OFF,ITS_CMD_RDBASE_LEN);
+
+//     //Translate to the physical red
+//     cpuid_t pgicr_id = vm_translate_to_pcpuid(cpu()->vcpu->vm, vrdbase); //ERROR verification
+
+//     //update the command
+//     curr_cmd->cmd[2] = (curr_cmd->cmd[2] & ~(BIT64_MASK(ITS_CMD_RDBASE_OFF,ITS_CMD_RDBASE_LEN))) | (pgicr_id << ITS_CMD_RDBASE_OFF);     //improve
+//     console_printk("[BAO-VGICV3] Value of cmd 2 mapc is 0x%lx\n",curr_cmd->cmd[2]);
+// }
+
+void its_clear_cmd(struct its_cmd* curr_cmd)
+{
+    for(int cmd_i = 0; cmd_i < 4; cmd_i++)
+        curr_cmd->cmd[cmd_i] = 0;
 }
 
-static void its_cmd_rdbase_to_phys(struct its_cmd* curr_cmd){
-    
-    //Get the rdbase
-    vcpuid_t vrdbase = bit64_extract(curr_cmd->cmd[2],ITS_CMD_RDBASE_OFF,ITS_CMD_RDBASE_LEN);
+void its_build_vmapp(struct its_cmd *curr_cmd,
+                    struct its_cmd_desc *desc)
+{
+    console_printk("Build vmapp command\n");
+    its_encode_cmd(curr_cmd,ITS_VMAPP_CMD);
+    its_encode_vpe_id(curr_cmd,desc->its_vmapp_cmd.vpe_id); 
+    its_encode_valid(curr_cmd,desc->its_vmapp_cmd.valid);
+    its_encode_target(curr_cmd,desc->its_vmapp_cmd.target);
+    its_encode_vpt_addr(curr_cmd,desc->its_vmapp_cmd.vpt_addr);
+    its_encode_vpt_size(curr_cmd,16);
+    console_printk("[BAO-VGICv3] ID is 0x%x\n",ITS_VMAPP_CMD);
+    console_printk("[BAO-VGICv3] VPE ID is 0x%x\n",desc->its_vmapp_cmd.vpe_id);
+    console_printk("[BAO-VGICv3] Valid is 0x%x\n",desc->its_vmapp_cmd.target);
+    console_printk("[BAO-VGICv3] Target is 0x%x\n",desc->its_vmapp_cmd.target);
+    console_printk("[BAO-VGICv3] VPT_addr is 0x%lx\n",desc->its_vmapp_cmd.vpt_addr);
+    console_printk("[BAO-VGICv3] VPT_SZ is 0x%x\n",16);
 
-    //Translate to the physical red
-    cpuid_t pgicr_id = vm_translate_to_pcpuid(cpu()->vcpu->vm, vrdbase); //ERROR verification
 
-    //update the command
-    curr_cmd->cmd[2] = (curr_cmd->cmd[2] & ~(BIT64_MASK(ITS_CMD_RDBASE_OFF,ITS_CMD_RDBASE_LEN))) | (pgicr_id << ITS_CMD_RDBASE_OFF);     //improve
-    console_printk("[BAO-VGICV3] Value of cmd 2 mapc is 0x%lx\n",curr_cmd->cmd[2]);
+}
+
+void its_build_vsync(struct its_cmd* curr_cmd, 
+                struct its_cmd_desc *desc)
+{
+    its_clear_cmd(curr_cmd);
+    its_encode_cmd(curr_cmd,ITS_VSYNC_CMD);
+    its_encode_vpe_id(curr_cmd,desc->its_vmovi_cmd.vpe_id);
+}
+
+void its_build_vinvall(struct its_cmd* curr_cmd, 
+                struct its_cmd_desc *desc)
+{
+    its_clear_cmd(curr_cmd);
+    its_encode_cmd(curr_cmd,ITS_VINVALL_CMD);
+    its_encode_vpe_id(curr_cmd,desc->its_vinvall_cmd.vpe_id);
+}
+
+void its_build_vmapti(struct its_cmd* curr_cmd, 
+                struct its_cmd_desc *desc)
+{
+    its_clear_cmd(curr_cmd);
+    its_encode_cmd(curr_cmd,ITS_VMAPTI_CMD);
+    its_encode_vpe_id(curr_cmd,desc->its_vmapti_cmd.vpe_id);
+    its_encode_device_id(curr_cmd,desc->its_vmapti_cmd.device_id);
+    its_encode_event_id(curr_cmd,desc->its_vmapti_cmd.event_id);
+    // if()
+    //     its_encode_db_id();
+    // else
+    its_encode_db_id(curr_cmd,desc->its_vmapti_cmd.db_id);
+
+    its_encode_virt_id(curr_cmd,desc->its_vmapti_cmd.virt_id);
 }
 
 void vgits_emul_cwriter_access(struct emul_access* acc, struct vgic_reg_handler_info* handlers,
@@ -508,24 +574,105 @@ void vgits_emul_cwriter_access(struct emul_access* acc, struct vgic_reg_handler_
         //             "3- 0x%lx\n"    
         //             "4- 0x%lx\n",cpu()->id,curr_cmd->cmd[0],curr_cmd->cmd[1],curr_cmd->cmd[2],curr_cmd->cmd[3]);
 
-        struct its_cmd* curr_cmd = cpu()->vcpu->vm->arch.vgic_its.its_cmdq + gits->CWRITER;
+        struct its_cmd* curr_cmd = cpu()->vcpu->vm->arch.vgic_its.its_cmdq + (gits->CWRITER/sizeof(struct its_cmd));
+        uint64_t prev_cwriter = gits->CWRITER;
+        uint64_t curr_cwriter = vcpu_readreg(cpu()->vcpu, acc->reg);
+        size_t n_cmd = (curr_cwriter - prev_cwriter)/0x20;
+        console_printk("Current cmd is %d\n",curr_cwriter);
+        struct its_cmd_desc desc;
 
-        if(its_cmd(curr_cmd, ITS_CMD_MAPC)){
+        //console_printk("Value of CWRITER after is 0x%x\n",gits->CWRITER);
+        while(n_cmd > 0)
+        {
+            switch (GITS_CMD_MASK(curr_cmd)) {
+            case ITS_MAPC_CMD:
+                vcpuid_t vrdbase = bit64_extract(curr_cmd->cmd[2],ITS_CMD_RDBASE_OFF,ITS_CMD_RDBASE_LEN);
 
-            its_cmd_rdbase_to_phys(curr_cmd);
-            curr_cmd++;
+                //Translate to the physical red
+                cpuid_t pgicr_id = vm_translate_to_pcpuid(cpu()->vcpu->vm, vrdbase); //ERROR verification
+                struct vcpu *target_vcpu = vm_get_vcpu(cpu()->vcpu->vm, vrdbase);
+                
+                //with some VM requires other logic
+                desc.its_vmapp_cmd.vpe_id = bit64_extract(curr_cmd->cmd[2],0,12);   //See imple defined sizes
+                desc.its_vmapp_cmd.target = pgicr_id;
+                desc.its_vmapp_cmd.vpt_addr = target_vcpu->arch.vgits_vpendTable;   //review
+                //desc.its_vmapp_cmd.valid = its_decode_val(curr_cmd);
+                desc.its_vmapp_cmd.valid = !!bit64_extract(curr_cmd->cmd[2],63,1);
+                
+                its_build_vmapp(curr_cmd,&desc);
 
-            if(its_cmd(curr_cmd, ITS_CMD_SYNC))
-            {
-                console_printk("Inside sync\n");
-                //update the command
-                its_cmd_rdbase_to_phys(curr_cmd);
-                console_printk("[BAO-VGICV3] Value of cmd 2 sync is 0x%lx\n",curr_cmd->cmd[2]);
+                console_printk("BAO-VGICV3: MAPC cmd received\n");
+                break;
+            case ITS_INV_CMD:
+                console_printk("BAO-VGICV3: MAPI cmd received\n");
+                break;
+            case ITS_MAPD_CMD:
+                console_printk("BAO-VGICV3: MAPD cmd received\n");
+                break;
+            case ITS_INVALL_CMD:
+                desc.its_vinvall_cmd.vpe_id = 0; //store the vpe info
+                its_build_vinvall(curr_cmd,&desc);
+                console_printk("BAO-VGICV3: INVALL cmd received\n");
+                break;
+            case ITS_MAPTI_CMD:
+                desc.its_vmapti_cmd.device_id = bit64_extract(curr_cmd->cmd[0],32,32);
+                desc.its_vmapti_cmd.event_id = bit64_extract(curr_cmd->cmd[1],0,32);
+                desc.its_vmapti_cmd.virt_id = bit64_extract(curr_cmd->cmd[1],32,32);
+                desc.its_vmapti_cmd.vpe_id = 0; //store the vpe info
+                desc.its_vmapti_cmd.db_id = 8192;
+
+                its_build_vmapti(curr_cmd,&desc);
+                console_printk("BAO-VGICV3: MAPTI cmd received\n");
+                break;
+            case ITS_SYNC_CMD:
+                desc.its_vmovi_cmd.vpe_id = 0; //store the vpe info
+                its_build_vsync(curr_cmd,&desc);
+                console_printk("BAO-VGICV3: SYNC cmd received\n");
+                break;
+            default:
+                console_printk("BAO-VGICV3: Other cmd received -> 0x%x\n",GITS_CMD_MASK(curr_cmd));        
             }
+            n_cmd--;
+            curr_cmd++;
+            console_printk("Value of n_cmd after is %d\n",n_cmd);
         }
-        
-        gits->CWRITER = vcpu_readreg(cpu()->vcpu, acc->reg);
-        console_printk("[BAO-VGICV3] CWRITER write from addr 0x%x with the offset 0x%lx\n",acc->addr,gits->CWRITER);
+        //     curr_cmd++;
+        // console_printk("Value of curr_cmd after is 0x%lx\n",curr_cmd);
+        // switch (GITS_CMD_MASK(curr_cmd)) {
+        // case ITS_MAPC_CMD:
+        //     console_printk("BAO-VGICV3: MAPC cmd received\n");
+        //     break;
+        // case ITS_MAPI_CMD:
+        //     console_printk("BAO-VGICV3: MAPI cmd received\n");
+        //     break;
+        // case ITS_INVALL_CMD:
+        //     console_printk("BAO-VGICV3: INVALL cmd received\n");
+        //     break;
+        // case ITS_MAPTI_CMD:
+        //     console_printk("BAO-VGICV3: MAPTI cmd received\n");
+        //     break;
+        // default:
+        //     console_printk("BAO-VGICV3: Other cmd received -> 0x%x\n",GITS_CMD_MASK(curr_cmd));        
+        // }
+        // curr_cmd--;
+
+        // if(its_cmd(curr_cmd, ITS_CMD_MAPC)){
+
+        //     its_cmd_rdbase_to_phys(curr_cmd);
+        //     curr_cmd++;
+
+        //     if(its_cmd(curr_cmd, ITS_CMD_SYNC))
+        //     {
+        //         console_printk("Inside sync\n");
+        //         //update the command
+        //         its_cmd_rdbase_to_phys(curr_cmd);
+        //         console_printk("[BAO-VGICV3] Value of cmd 2 sync is 0x%lx\n",curr_cmd->cmd[2]);
+        //     }
+        // }
+        gits->CWRITER = curr_cwriter;
+        //console_printk("Value of CWRITER after is 0x%x\n",gits->CWRITER);
+
+        console_printk("[BAO-VGICV3] CWRITER write from addr 0x%x with the offset 0x%lx\n\n",acc->addr,gits->CWRITER);
 
     }
 }

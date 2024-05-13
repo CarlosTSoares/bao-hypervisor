@@ -310,6 +310,48 @@ void gits_map_mmio()
         platform.arch.gic.gits_addr, NUM_PAGES(sizeof(struct gits_hw)));
 }
 
+void gits_init_vPET(){
+
+    // //paddr_t vPET_pa;
+    // vPET = (vaddr_t *)mem_alloc_vpage(&cpu()->as, SEC_HYP_VM, INVALID_VA ,NUM_PAGES(0x10000));
+    // console_printk("vPET table allocated is 0x%lx\n",vPET);
+    // //mem_guest_ipa_translate(vPET,&vPET_pa);
+    // //console_printk("vPET_phy table allocated is 0x%lx\n",vPET_pa);
+
+    // for (size_t index = 0; index < GIC_MAX_TTD; index++) {
+    //     //TODO -  Verify if flat tables are supported and manage Indirect bit
+    //     if(bit64_extract(gits->BASER[index], GITS_BASER_TYPE_OFF, GITS_BASER_TYPE_LEN) == 0x2)
+    //     {
+    //         console_printk("[BAO-VGICV3] VPE table found is 0x%lx\n",gits->BASER[index]);
+    //         gits->BASER[index]= (vaddr_t)vPET |
+    //                         GITS_BASER_InnerShareable |
+    //                         GITS_BASER_RaWaWb;
+    //         console_printk("[BAO-VGICV3] VPE table found is 0x%lx\n",gits->BASER[index]);
+    //         gits->BASER[index] |= GITS_BASER_VAL_BIT;
+    //         console_printk("[BAO-VGICV3] VPE table found is 0x%lx\n",gits->BASER[index]);
+
+    //     }
+    // }
+    struct ppages pages = { .num_pages = 0 };
+    pages = mem_alloc_ppages(cpu()->as.colors,16,true);
+    console_printk("vPET_phy table allocated is 0x%lx\n",pages.base);
+
+    for (size_t index = 0; index < GIC_MAX_TTD; index++) {
+        //TODO -  Verify if flat tables are supported and manage Indirect bit
+        if(bit64_extract(gits->BASER[index], GITS_BASER_TYPE_OFF, GITS_BASER_TYPE_LEN) == 0x2)
+        {
+            console_printk("[BAO-VGICV3] VPE table found is 0x%lx\n",gits->BASER[index]);
+            gits->BASER[index]= pages.base |
+                            GITS_BASER_InnerShareable |
+                            GITS_BASER_RaWaWb;
+            console_printk("[BAO-VGICV3] VPE table found is 0x%lx\n",gits->BASER[index]);
+            gits->BASER[index] |= GITS_BASER_VAL_BIT;
+            console_printk("[BAO-VGICV3] VPE table found is 0x%lx\n",gits->BASER[index]);
+
+        }
+    }
+}
+
 
 
 
