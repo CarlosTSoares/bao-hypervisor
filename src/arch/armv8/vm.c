@@ -94,3 +94,7 @@ void vcpu_arch_run(struct vcpu* vcpu)
         cpu_idle();
     }
 }
+
+void vm_add_lpi(struct vm* vm, struct gic_lpi_config* gic_lpi){
+    list_push(&vm->arch.gic_lpi_list, &gic_lpi->node);
+}

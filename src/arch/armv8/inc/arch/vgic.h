@@ -74,11 +74,24 @@ struct vgic_priv {
 };
 
 #if (GIC_VERSION == GICV3)
-    struct vgic_its{
+    
+    struct vgits_cmdq{
+        struct its_cmd* base_cmdq;
+        size_t page_size; //in pages
+    };
+    
+    struct vgits{
         spinlock_t lock;
-        struct its_cmd* its_cmdq;
+        struct vgits_cmdq vgits_cmdq;
         uint64_t CBASER;
         uint64_t BASER[GIC_MAX_TTD];    
+    };
+
+    struct gic_lpi_config{
+        node_t node;
+        uint16_t id;
+        size_t enable;
+        uint8_t prio;
     };
 #endif
 

@@ -450,8 +450,24 @@ uint8_t gicr_get_prio(irqid_t int_id, cpuid_t gicr_id);
 
 void gic_maintenance_handler(irqid_t irq_id);
 
+struct its_cmd{
+    uint64_t cmd[4];
+};
+
+static inline void its_mask_encode(uint64_t *cmd_dw, uint64_t val, size_t off, size_t len){
+    uint64_t msk = BIT64_MASK(off,len);
+    *cmd_dw &= ~msk;
+    *cmd_dw |= (val << off) & msk;
+}
+
+void its_encode_cmd(struct its_cmd *cmd, uint8_t cmd_id);
+void its_encode_valid(struct its_cmd *cmd, size_t val);
+void its_encode_target(struct its_cmd *cmd, uint64_t target);
+void its_encode_ic_id(struct its_cmd *cmd, uint64_t ic_id);
+
 extern volatile struct gicd_hw* gicd;
 extern volatile struct gicr_hw* gicr;
+
 
 #if (GIC_VERSION == GICV3)
     /*----------- GIC ITS -----------*/
@@ -485,6 +501,56 @@ extern volatile struct gicr_hw* gicr;
     #define GITS_BASER_PAGE_SZ_MASK         (BIT64_MASK(GITS_BASER_PAGE_SZ_OFF,GITS_BASER_PAGE_SZ_LEN))
     #define GITS_BASER_RO_MASK              (GITS_BASER_TYPE_MASK | GITS_BASER_ENTRY_SZ_MASK | GITS_BASER_PAGE_SZ_MASK)
     
+    #define GITS_BASER_PHY_OFF                  (12)
+    #define GITS_BASER_PHY_LEN                  (36)
+    #define GITS_BASER_SHAREABILITY_OFF         (10)
+    #define GITS_BASER_INNERCACHE_OFF           (59)
+    #define GITS_BASER_InnerShareable           (1ULL << GITS_BASER_SHAREABILITY_OFF)
+    #define GITS_BASER_RaWaWb                   (7ULL << GITS_BASER_INNERCACHE_OFF)
+    #define GITS_BASER_VAL_BIT                   (1ULL << 63)
+    /*
+    * ITS command descriptors - parameters to be encoded in a command
+    * block.
+    */
+    struct its_cmd_desc {
+        union {
+            struct {
+            	uint16_t ic_id;
+                uint64_t target;
+                bool valid;
+            } its_mapc_cmd;
+
+            struct {
+                uint64_t target;
+            } its_sync_cmd;
+
+            struct {
+                uint16_t vpe_id;
+                uint64_t target;
+                uint64_t vpt_addr;
+                bool valid;
+            } its_vmapp_cmd;
+
+            struct {
+                uint16_t vpe_id;
+            } its_vmovi_cmd;
+
+            struct {
+                uint16_t vpe_id;
+            } its_vinvall_cmd;
+
+            struct {
+                uint16_t vpe_id;
+                uint32_t device_id;
+                uint32_t virt_id;
+                uint32_t event_id;
+                uint32_t db_id;
+                bool db_enabled;
+            } its_vmapti_cmd;
+        };
+    };
+
+
     struct gits_hw {
         /*ITS_CTRL_base frame*/
         uint32_t CTLR;
@@ -508,9 +574,20 @@ extern volatile struct gicr_hw* gicr;
 
     extern volatile struct gits_hw* gits;
 
-    struct its_cmd{
-        uint64_t cmd[4];
-    };
+
+    #define ITS_CMD_QUEUE_N_PAGE     16
+
+        /* ITS defines */
+    #define ITS_MAPC_CMD            (0x9)     
+    #define ITS_SYNC_CMD            (0x5)
+
+
+    #define ITS_CMD_ENC_OFF         (0)
+    #define ITS_CMD_ENC_LEN         (8)
+    #define ITS_CMD_RDBASE_OFF      (16)
+    #define ITS_CMD_RDBASE_LEN      (35)
+
+    extern struct its_cmd *its_cmd_queue;
 #endif
 
 size_t gich_num_lrs();

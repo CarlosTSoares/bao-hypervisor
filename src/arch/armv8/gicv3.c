@@ -15,12 +15,14 @@
 extern volatile struct gicd_hw* gicd;
 volatile struct gicr_hw* gicr;
 volatile struct gits_hw* gits;
+struct its_cmd *its_cmd_queue;
 
 
 /*GICv3 LPI configuration table pointer*/
 
 static spinlock_t gicd_lock = SPINLOCK_INITVAL;
 static spinlock_t gicr_lock = SPINLOCK_INITVAL;
+static spinlock_t gits_lock = SPINLOCK_INITVAL;
 
 
 size_t NUM_LRS;
@@ -310,40 +312,57 @@ void gits_map_mmio()
         platform.arch.gic.gits_addr, NUM_PAGES(sizeof(struct gits_hw)));
 }
 
+void gits_set_cbaser(uint64_t cbaser){
 
+    spin_lock(&gits_lock);
+    gits->CBASER = cbaser;
+    spin_unlock(&gits_lock);
+}
 
+//not here
+void its_init(){
 
+    // TODO: create more struct to store alloc information
+    
+    paddr_t cmd_queue_pa;
 
-bool its_init()
-{
-    //TO-DO The system can have more than one ITS
+    //Alocc the cmd queue 64KB-aligned
+    its_cmd_queue = mem_alloc_page(ITS_CMD_QUEUE_N_PAGE,SEC_HYP_GLOBAL,true);
 
-    // paddr_t cmdq_pa;
+    
+    if (its_cmd_queue == NULL)
+        ERROR("ITS command queue not allocated\n");
 
-    // //Alloc the command queue in hypervisor space
-    // console_printk("[BAO-GICv3] Inside ITS init\n");
+    mem_translate(&cpu()->as,(vaddr_t)its_cmd_queue,&cmd_queue_pa);
 
-    // //TO-Do aligned to 64KB
-    // its_cmdq = mem_alloc_page(16, SEC_HYP_GLOBAL, true);
+    console_printk("Value of vcmdq page is 0x%lx and phy is 0x%lx\n",its_cmd_queue,cmd_queue_pa);
 
-    // if (its_cmdq == NULL)
-    //     ERROR("ITS command line not allocated\n");
+    uint64_t cbaser = cmd_queue_pa  |
+                    GITS_CBASER_RaWaWb  |
+                    GITS_CBASER_InnerShareable |
+                    (ITS_CMD_QUEUE_N_PAGE - 1) |
+                    GITS_CBASER_VALID;
+    
+    gits_set_cbaser(cbaser);
 
-    // console_printk("[BAO] Virtual addr of command queue is 0x%x\n",its_cmdq);
-    // //Update the cbaser
+    /*Alloc collection table and assign to cbaser*/
 
-    // //Translate to physical addr
-    // bool err = mem_translate(&cpu()->as,(vaddr_t)its_cmdq,&cmdq_pa);
-    // if (!err)
-    //     ERROR("[BAO] Physical addr of command queue is 0x%x \n",cmdq_pa);
+    struct ppages pages = { .num_pages = 0 };
+    pages = mem_alloc_ppages(cpu()->as.colors,16,true);
 
-    // console_printk("[BAO] Physical addr of command queue is 0x%x and vaddr is 0x%x\n",cmdq_pa,its_cmdq);
-    // uint64_t cbaser = (cmdq_pa |
-    //                 GITS_CBASER_RaWaWb |
-    //                 GITS_CBASER_InnerShareable |
-    //                 (ITS_CMD_QUEUE_PAGE_SZ - 1) |
-    //                 GITS_CBASER_VALID);
-    // console_printk("[BAO] CBaser value is 0x%llx\n",cbaser);
-    return true;
+    console_printk("CT_phy table allocated is 0x%lx\n",pages.base);
 
+    for (size_t index = 0; index < GIC_MAX_TTD; index++) {
+        //TODO -  Verify if flat tables are supported and manage Indirect bit
+        if(bit64_extract(gits->BASER[index], GITS_BASER_TYPE_OFF, GITS_BASER_TYPE_LEN) == 0x4)
+        {
+            console_printk("[BAO-VGICV3] Collection table found is 0x%lx\n",gits->BASER[index]);
+            gits->BASER[index]= pages.base |
+                            GITS_BASER_InnerShareable |
+                            GITS_BASER_RaWaWb;
+            console_printk("[BAO-VGICV3] VPE table found is 0x%lx\n",gits->BASER[index]);
+            gits->BASER[index] |= GITS_BASER_VAL_BIT;
+            console_printk("[BAO-VGICV3] VPE table found is 0x%lx\n",gits->BASER[index]);
+        }
+    }
 }

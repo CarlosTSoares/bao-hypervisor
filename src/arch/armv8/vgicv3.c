@@ -27,14 +27,8 @@
 #define GITS_REG_OFF(REG)   (offsetof(struct gits_hw, REG) & 0x1ffff)
 #define GITS_REG_MASK(ADDR) ((ADDR) & 0x1ffff)
 
+#define GITS_CMD_MASK(CMD)  (bit64_extract(CMD->cmd[0],ITS_CMD_ENC_OFF,ITS_CMD_ENC_LEN))
 
-/* ITS defines */
-#define ITS_CMD_MAPC            (9)     
-#define ITS_CMD_SYNC            (5)
-#define ITS_CMD_ENC_OFF         (0)
-#define ITS_CMD_ENC_LEN         (8)
-#define ITS_CMD_RDBASE_OFF      (16)
-#define ITS_CMD_RDBASE_LEN      (35)
 
 static spinlock_t gits_lock = SPINLOCK_INITVAL;
 
@@ -187,6 +181,26 @@ void vgicd_emul_router_access(struct emul_access* acc, struct vgic_reg_handler_i
 
 /* Propbaser and Pendbaser emulation*/
 
+bool proptable_emul_handler(struct emul_access* acc){
+
+    //Verify if VM has LPI
+    console_printk("[Bao] Inside proptable emul\n");
+    size_t offset = acc->addr - cpu()->vcpu->vm->arch.prop_table_addr;
+    console_printk("[BAO] Value of offset 0x%x\n",offset);
+    /*
+    1. Know the LPI number trying to access
+    We can do this by knowing the address offset with base 
+    */
+    if (!acc->write) { //read from proptable
+
+
+    }else{  //write to proptable
+        *(proptable+offset)= vcpu_readreg(cpu()->vcpu, acc->reg);
+    }
+
+    // To-DO error verification
+    return true;
+}
 
 void vgicr_emul_propbaser_access(struct emul_access* acc, struct vgic_reg_handler_info* handlers,
     bool gicr_access, vcpuid_t vgicr_id) 
@@ -229,6 +243,30 @@ void vgicr_emul_propbaser_access(struct emul_access* acc, struct vgic_reg_handle
             uint64_t propbaser_paddr = prop_pa |
                         (tmp & ~GICR_PROPBASER_PHY_ADDR_MSK);
             cpu()->vcpu->arch.vgic_priv.vgicr.PROPBASER = tmp;
+
+            //map the table to Bao
+
+            //Unmap the region from VM's space
+            if(vgicr_id == CPU_MASTER)
+            {
+                mem_unmap(&cpu()->vcpu->vm->as,(vaddr_t)propbaser_phy_addr,pages,true); //maybe i dont need to unmap
+                console_printk("[BAO] Unnmap proptable's VM region\n");
+            }
+                //can i call a trap to this region without unmap?
+            cpu()->vcpu->vm->arch.prop_table_addr = (vaddr_t)propbaser_phy_addr;
+            //Add emulated memory
+            cpu()->vcpu->vm->arch.proptable_emul = (struct emul_mem){ .va_base = (vaddr_t)propbaser_phy_addr,
+            .size = size,
+            .handler = proptable_emul_handler };
+            vm_emul_add_mem(cpu()->vcpu->vm, &cpu()->vcpu->vm->arch.proptable_emul);
+
+
+
+            //give to the vm only read capacity
+
+            //Add emulated memory to the VM
+
+
             gicr[pgicr_id].PROPBASER = propbaser_paddr;
             console_printk("VGIC3: Propbaser write from cpu %d -> 0x%x\n",cpu()->id,gicr[pgicr_id].PROPBASER);
         }
@@ -431,7 +469,7 @@ void vgits_emul_cbaser_access(struct emul_access* acc, struct vgic_reg_handler_i
     if (!acc->write) {  //read register
 
         //TO-DO Give to VM his virtual value of cbaser
-        vcpu_writereg(cpu()->vcpu, acc->reg,cpu()->vcpu->vm->arch.vgic_its.CBASER);
+        vcpu_writereg(cpu()->vcpu, acc->reg,cpu()->vcpu->vm->arch.vgits.CBASER);
         console_printk("[BAO-VGICV3] CBASER read from addr 0x%x\n",acc->addr);
     }else{
         //remove it
@@ -440,56 +478,95 @@ void vgits_emul_cbaser_access(struct emul_access* acc, struct vgic_reg_handler_i
         1. Verify locks and alignments
         2. Allow the modification of cmd queue base addr
         */
-        paddr_t cmdq_pa=0;
+        struct vm* vm =  cpu()->vcpu->vm;
         uint64_t tmp_cbaser = vcpu_readreg(cpu()->vcpu, acc->reg);
+        paddr_t cmdq_pa=0;
         vaddr_t *cbaser_vaddr = (vaddr_t *)(tmp_cbaser & GITS_CBASER_PHY_ADDR_MSK);
         size_t pages = (tmp_cbaser & GITS_CBASER_SIZE_MSK) + 1;
 
         console_printk("[BAO-VGICV3] Number of command pages:%d,vaddr:0x%lx\n",pages,cbaser_vaddr);
 
-
         mem_guest_ipa_translate(cbaser_vaddr,&cmdq_pa);
-        // if (!val)
-        //     ERROR("[BAO] Physical addr of command queue is 0x%lx \n",cmdq_pa);
 
-        console_printk("[BAO] Physical addr of command queue is 0x%lx \n",cmdq_pa);
+        spin_lock(&vm->arch.vgits.lock);
 
-        struct vm* vm =  cpu()->vcpu->vm;
-        //Map to the Bao space only once
-        if(vm->arch.vgic_its.its_cmdq == NULL) {
-            vm->arch.vgic_its.its_cmdq = (void*)mem_alloc_map_dev(&cpu()->as, SEC_HYP_GLOBAL, INVALID_VA,
-            (vaddr_t)cmdq_pa,pages);
-            if(vm->arch.vgic_its.its_cmdq == NULL)
-                ERROR("[BAO] Command queue not mapped to Bao\n");
-            uint64_t cbaser_paddr = cmdq_pa |
-                        (tmp_cbaser & ~GITS_CBASER_PHY_ADDR_MSK);
-            console_printk("[BAO] Physical addr of command queue is 0x%lx \n",cbaser_paddr);
-            gits->CBASER = cbaser_paddr;
-            vm->arch.vgic_its.CBASER = tmp_cbaser;
+        //Unmap from the Bao space
+        if(vm->arch.vgits.vgits_cmdq.base_cmdq != NULL) {
+            //unmap
+            mem_unmap(&cpu()->as,(vaddr_t)vm->arch.vgits.vgits_cmdq.base_cmdq,vm->arch.vgits.vgits_cmdq.page_size,true);
         }
+
+        vm->arch.vgits.vgits_cmdq.base_cmdq = (void*)mem_alloc_map_dev(&cpu()->as, SEC_HYP_GLOBAL, INVALID_VA,
+        (vaddr_t)cmdq_pa,pages);
+
+        if(vm->arch.vgits.vgits_cmdq.base_cmdq == NULL)
+            ERROR("[BAO] Command queue not mapped to Bao\n");
+        // uint64_t cbaser_paddr = cmdq_pa |
+        //             (tmp_cbaser & ~GITS_CBASER_PHY_ADDR_MSK);
+        // console_printk("[BAO] Physical addr of command queue is 0x%lx \n",cbaser_paddr);
+        //gits->CBASER = cbaser_paddr;
+        vm->arch.vgits.vgits_cmdq.page_size = pages;
+        vm->arch.vgits.CBASER = tmp_cbaser;
+
+        spin_unlock(&vm->arch.vgits.lock);
 
         console_printk("[BAO-VGICV3] CBASER write from addr 0x%x\n",acc->addr);
     }
 }
 
-static inline bool its_cmd(struct its_cmd* curr_cmd, size_t cmd){
-    if(bit64_extract(curr_cmd->cmd[0],ITS_CMD_ENC_OFF,ITS_CMD_ENC_LEN) == cmd)
-        return true;
-    else
-        return false;
+
+
+
+
+void its_clear_cmd(struct its_cmd* curr_cmd)
+{
+    for(int cmd_i = 0; cmd_i < 4; cmd_i++)
+        curr_cmd->cmd[cmd_i] = 0;
 }
 
-static void its_cmd_rdbase_to_phys(struct its_cmd* curr_cmd){
-    
-    //Get the rdbase
-    vcpuid_t vrdbase = bit64_extract(curr_cmd->cmd[2],ITS_CMD_RDBASE_OFF,ITS_CMD_RDBASE_LEN);
+void its_build_mapc(struct its_cmd *curr_cmd,
+                    struct its_cmd_desc *desc)
+{
+    console_printk("Build mapc command\n");
 
-    //Translate to the physical red
-    cpuid_t pgicr_id = vm_translate_to_pcpuid(cpu()->vcpu->vm, vrdbase); //ERROR verification
+    its_clear_cmd(curr_cmd);
+    its_encode_cmd(curr_cmd,ITS_MAPC_CMD);
+    its_encode_target(curr_cmd,desc->its_mapc_cmd.target);
+    its_encode_ic_id(curr_cmd,desc->its_mapc_cmd.ic_id);
+    its_encode_valid(curr_cmd,desc->its_mapc_cmd.valid);
 
-    //update the command
-    curr_cmd->cmd[2] = (curr_cmd->cmd[2] & ~(BIT64_MASK(ITS_CMD_RDBASE_OFF,ITS_CMD_RDBASE_LEN))) | (pgicr_id << ITS_CMD_RDBASE_OFF);     //improve
-    console_printk("[BAO-VGICV3] Value of cmd 2 mapc is 0x%lx\n",curr_cmd->cmd[2]);
+    console_printk("Valid is 0x%x\n",desc->its_mapc_cmd.valid);
+
+    console_printk("[BAO-VGICV3] Value of command pointed by cwriter in cpu %d is\n"
+            "1- 0x%lx\n"
+            "2- 0x%lx\n"    
+            "3- 0x%lx\n"    
+            "4- 0x%lx\n\n",cpu()->id,curr_cmd->cmd[0],curr_cmd->cmd[1],curr_cmd->cmd[2],curr_cmd->cmd[3]);
+
+}
+
+void its_build_sync(struct its_cmd *curr_cmd,
+                    struct its_cmd_desc *desc)
+{
+    console_printk("Build sync command\n");
+
+    its_clear_cmd(curr_cmd);
+    its_encode_cmd(curr_cmd,ITS_SYNC_CMD);
+    its_encode_target(curr_cmd,desc->its_sync_cmd.target);
+
+    console_printk("[BAO-VGICV3] Value of command pointed by cwriter in cpu %d is\n"
+            "1- 0x%lx\n"
+            "2- 0x%lx\n"    
+            "3- 0x%lx\n"    
+            "4- 0x%lx\n\n",cpu()->id,curr_cmd->cmd[0],curr_cmd->cmd[1],curr_cmd->cmd[2],curr_cmd->cmd[3]);
+
+}
+
+void its_copy_to_cmdq(struct its_cmd *dest_cmd,
+                    struct its_cmd *src_cmd)
+{
+    for(int i = 0; i < 4; i++)
+        dest_cmd->cmd[i] = src_cmd->cmd[i];
 }
 
 void vgits_emul_cwriter_access(struct emul_access* acc, struct vgic_reg_handler_info* handlers,
@@ -499,29 +576,57 @@ void vgits_emul_cwriter_access(struct emul_access* acc, struct vgic_reg_handler_
         vcpu_writereg(cpu()->vcpu, acc->reg,gits->CWRITER);
         console_printk("[BAO-VGICV3] CBASER read from addr 0x%x in cpu %d\n",acc->addr,cpu()->id);
     }else{
-        // console_printk("[BAO-VGICV3] Value of command pointed by cwriter in cpu %d is\n"
-        //             "1- 0x%lx\n"
-        //             "2- 0x%lx\n"    
-        //             "3- 0x%lx\n"    
-        //             "4- 0x%lx\n",cpu()->id,curr_cmd->cmd[0],curr_cmd->cmd[1],curr_cmd->cmd[2],curr_cmd->cmd[3]);
 
-        struct its_cmd* curr_cmd = cpu()->vcpu->vm->arch.vgic_its.its_cmdq + gits->CWRITER;
+        //Number of commands to translate
+        uint64_t prev_cwriter = gits->CWRITER;
+        uint64_t cmd_off =  prev_cwriter/0x20;
+        uint64_t curr_cwriter = vcpu_readreg(cpu()->vcpu, acc->reg);
+        size_t n_cmd = (prev_cwriter > curr_cwriter)? (((4096 * (ITS_CMD_QUEUE_N_PAGE + 1))- prev_cwriter) + curr_cwriter)/0x20 : (curr_cwriter - prev_cwriter)/0x20;
 
-        if(its_cmd(curr_cmd, ITS_CMD_MAPC)){
+        struct its_cmd *vm_cmd = cpu()->vcpu->vm->arch.vgits.vgits_cmdq.base_cmdq + cmd_off;
+        struct its_cmd *its_cmd = its_cmd_queue + cmd_off;
 
-            its_cmd_rdbase_to_phys(curr_cmd);
-            curr_cmd++;
+        console_printk("Value of its cmd is 0x%lx\n",its_cmd);
 
-            if(its_cmd(curr_cmd, ITS_CMD_SYNC))
-            {
-                console_printk("Inside sync\n");
-                //update the command
-                its_cmd_rdbase_to_phys(curr_cmd);
-                console_printk("[BAO-VGICV3] Value of cmd 2 sync is 0x%lx\n",curr_cmd->cmd[2]);
+        struct its_cmd_desc desc;
+
+        vcpuid_t vrdbase;
+        cpuid_t pgicr_id;
+
+        while(n_cmd > 0)
+        {
+            switch (GITS_CMD_MASK(vm_cmd)) {
+            case ITS_MAPC_CMD:
+                
+                vrdbase = bit64_extract(vm_cmd->cmd[2],ITS_CMD_RDBASE_OFF,ITS_CMD_RDBASE_LEN);
+                pgicr_id = vm_translate_to_pcpuid(cpu()->vcpu->vm, vrdbase); //ERROR verification
+
+                desc.its_mapc_cmd.target = pgicr_id;
+                desc.its_mapc_cmd.ic_id = bit64_extract(vm_cmd->cmd[2],0,12);   //See imple defined sizes
+                desc.its_mapc_cmd.valid = !!bit64_extract(vm_cmd->cmd[2],63,1);
+
+                its_build_mapc(its_cmd,&desc);
+                console_printk("BAO-VGICV3: MAPC cmd received\n");
+                break;
+            case ITS_SYNC_CMD:
+                vrdbase = bit64_extract(vm_cmd->cmd[2],ITS_CMD_RDBASE_OFF,ITS_CMD_RDBASE_LEN);
+                pgicr_id = vm_translate_to_pcpuid(cpu()->vcpu->vm, vrdbase); //ERROR verification
+
+                desc.its_sync_cmd.target = pgicr_id; //store the vpe info
+                console_printk("Value of sync target is 0x%x and virtual is 0x%x and cpu is %d\n",pgicr_id,vrdbase,cpu()->id);
+                its_build_sync(its_cmd,&desc);
+                console_printk("BAO-VGICV3: SYNC cmd received\n");
+                break;
+            default:
+                its_copy_to_cmdq(its_cmd,vm_cmd);
+                console_printk("BAO-VGICV3: Other cmd received -> 0x%x\n",GITS_CMD_MASK(vm_cmd));        
             }
+            n_cmd--;
+            vm_cmd++;
+            its_cmd++;
         }
         
-        gits->CWRITER = vcpu_readreg(cpu()->vcpu, acc->reg);
+        gits->CWRITER = curr_cwriter;
         console_printk("[BAO-VGICV3] CWRITER write from addr 0x%x with the offset 0x%lx\n",acc->addr,gits->CWRITER);
 
     }
@@ -541,23 +646,22 @@ void vgits_emul_baser_access(struct emul_access* acc, struct vgic_reg_handler_in
     bool gicr_access, vcpuid_t vgicr_id) 
 {
     size_t index = (GITS_REG_MASK(acc->addr) - GITS_REG_OFF(BASER)) >> 3;
-    if (!acc->write) { //read baser
-
         /*
-        1. Get the baser index from acc->addr
-        2. 
-        3. write in the vcpu register
+    1. Get the baser index from acc->addr
+    2. 
+    3. write in the vcpu register
 
-        ---
-        Mask the addr to get the index value
-        0x8080100 - 0 - 00000000
-        0x8080108 - 1 - 00001000
-        0x8080110 - 2 - 00010000
-        0x8080118 - 3 - 00011000
-        0x8080120 - 4 - 00100000
-        */
-        vcpu_writereg(cpu()->vcpu, acc->reg,(cpu()->vcpu->vm->arch.vgic_its.BASER[index]));
-        console_printk("[BAO-VGICV3] BASER read from addr 0x%x, index %d -> 0x%lx\n",acc->addr,index,cpu()->vcpu->vm->arch.vgic_its.BASER[index]);
+    ---
+    Mask the addr to get the index value
+    0x8080100 - 0 - 00000000
+    0x8080108 - 1 - 00001000
+    0x8080110 - 2 - 00010000
+    0x8080118 - 3 - 00011000
+    0x8080120 - 4 - 00100000
+    */
+    if (!acc->write) { //read baser
+        vcpu_writereg(cpu()->vcpu, acc->reg,(cpu()->vcpu->vm->arch.vgits.BASER[index]));
+        console_printk("[BAO-VGICV3] BASER read from addr 0x%x, index %d -> 0x%lx\n",acc->addr,index,cpu()->vcpu->vm->arch.vgits.BASER[index]);
     }else{
         
         uint64_t tmp = vcpu_readreg(cpu()->vcpu, acc->reg);
@@ -565,18 +669,27 @@ void vgits_emul_baser_access(struct emul_access* acc, struct vgic_reg_handler_in
         console_printk("[BAO-VGICV3] Baser phy is 0x%lx\n",gits->BASER[index]);
 
 
-        if(tmp & GITS_BASER_VALID_BIT) //multiprocessor works?
+        if((tmp & GITS_BASER_VALID_BIT) && (bit64_extract(gits->BASER[index], GITS_BASER_TYPE_OFF, GITS_BASER_TYPE_LEN) != 0x4)) //multiprocessor works?
         {
+            
             //translate to physical
             paddr_t baser_pa = 0;
             vaddr_t *baser_vaddr = (vaddr_t *)(tmp & GITS_BASER_PHY_ADDR_MSK);
+            // if(bit64_extract(gits->BASER[index], GITS_BASER_TYPE_OFF, GITS_BASER_TYPE_LEN) == 0x4) //TODO unmap only once
+            // {
+            //     uint16_t n_pages = bit64_extract(tmp, 0, 8);
+            //     uint16_t sz_pages = bit64_extract(gits->BASER[index], 8, 2);
+            //     mem_unmap(&cpu()->vcpu->vm->as,(vaddr_t)baser_vaddr,n_pages*16,true); //need some verifications possible attacks!
+            //     console_printk("[BAO-VGICV3] Collection table found and unmaped from guest with sz page %d and n pages %d\n",sz_pages, n_pages);
+            // }
 
             console_printk("[BAO-VGICV3] Baser virtual is 0x%lx\n",baser_vaddr);
 
 
-            mem_guest_ipa_translate(baser_vaddr,&baser_pa);
+            mem_guest_ipa_translate(baser_vaddr,&baser_pa); //maybe has some implications
 
             console_printk("[BAO-VGICV3] Baser phy is 0x%lx\n",baser_pa);
+            //need to alloc the coll table? If not, what happen?
 
             uint64_t baser_paddr = baser_pa |
                         (tmp & ~GITS_BASER_PHY_ADDR_MSK);
@@ -584,9 +697,9 @@ void vgits_emul_baser_access(struct emul_access* acc, struct vgic_reg_handler_in
             gits->BASER[index]= baser_paddr;
         }
 
-        cpu()->vcpu->vm->arch.vgic_its.BASER[index] = (cpu()->vcpu->vm->arch.vgic_its.BASER[index] & GITS_BASER_RO_MASK) | (tmp & ~GITS_BASER_RO_MASK);
+        cpu()->vcpu->vm->arch.vgits.BASER[index] = (cpu()->vcpu->vm->arch.vgits.BASER[index] & GITS_BASER_RO_MASK) | (tmp & ~GITS_BASER_RO_MASK);
 
-        console_printk("[BAO-VGICV3] BASER write from addr 0x%x, index %d with value 0x%lx\n",acc->addr,index,cpu()->vcpu->vm->arch.vgic_its.BASER[index]);
+        console_printk("[BAO-VGICV3] BASER write from addr 0x%x, index %d with value 0x%lx\n",acc->addr,index,cpu()->vcpu->vm->arch.vgits.BASER[index]);
     }
 }
 
@@ -807,7 +920,7 @@ void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp)
         for (size_t index = 0; index < GIC_MAX_TTD; index++) {
             //TODO -  Verify if flat tables are supported and manage Indirect bit
 
-            vm->arch.vgic_its.BASER[index]= (gits->BASER[index] & GITS_BASER_RO_MASK);
+            vm->arch.vgits.BASER[index]= (gits->BASER[index] & GITS_BASER_RO_MASK);
         }
         vm->arch.vgits_emul = (struct emul_mem){ .va_base = vgic_dscrp->gits_addr,
             .size = ALIGN(sizeof(struct gits_hw), PAGE_SIZE),

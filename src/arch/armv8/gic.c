@@ -76,6 +76,8 @@ bool gicd_supports_LPIs(){
     return (gicd->TYPER & GICD_TYPER_LPIS_BIT) ? true: false;
 }
 
+
+
 void gic_init()
 {
     if (GIC_VERSION == GICV3) {
@@ -92,6 +94,7 @@ void gic_init()
         {
             console_printk("[BAO] LPI supported\n");
             gits_map_mmio();
+            its_init();
         }
     }
 
@@ -253,4 +256,18 @@ void gicd_set_enable(irqid_t int_id, bool en)
     } else {
         gicd->ICENABLER[reg_ind] = bit;
     }
+}
+
+void its_encode_cmd(struct its_cmd *cmd, uint8_t cmd_id){
+    its_mask_encode(&cmd->cmd[0],cmd_id,0,8);
+}
+
+void its_encode_valid(struct its_cmd *cmd, size_t val){
+    its_mask_encode(&cmd->cmd[2],val,63,1); 
+}
+void its_encode_target(struct its_cmd *cmd, uint64_t target){
+    its_mask_encode(&cmd->cmd[2],target,16,36);  
+}
+void its_encode_ic_id(struct its_cmd *cmd, uint64_t ic_id){
+    its_mask_encode(&cmd->cmd[2],ic_id,0,12);
 }

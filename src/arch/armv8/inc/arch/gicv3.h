@@ -153,6 +153,6 @@ static inline void gicc_dir(uint32_t dir)
 
 void gits_map_mmio();
 
-bool its_init();
+void its_init();
 
 #endif /* __GICV3_H__ */

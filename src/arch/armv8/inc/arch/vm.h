@@ -50,7 +50,8 @@ struct vm_arch {
     struct emul_reg icc_sre_emul;
     #if (GIC_VERSION == GICV3)
         struct emul_mem vgits_emul;
-        struct vgic_its vgic_its;
+        struct vgits vgits;
+        struct list gic_lpi_list;
     #endif
 };
 
@@ -77,5 +78,8 @@ static inline void vcpu_arch_inject_irq(struct vcpu* vcpu, irqid_t id)
 {
     vgic_inject(vcpu, id, 0);
 }
+
+/*LPI*/
+void vm_add_lpi(struct vm* vm, struct gic_lpi_config* gic_lpi);
 
 #endif /* __ARCH_VM_H__ */
