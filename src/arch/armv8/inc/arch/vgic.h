@@ -87,11 +87,15 @@ struct vgic_priv {
         uint64_t BASER[GIC_MAX_TTD];    
     };
 
-    struct gic_lpi_config{
-        node_t node;
-        uint16_t id;
+    struct gic_lpi_interrupt{
         size_t enable;
         uint8_t prio;
+    };
+
+    struct proptable{
+        uint8_t *proptab_base;
+        vaddr_t vm_proptable_vaddr;
+        size_t proptab_size;    //in bytes
     };
 #endif
 
@@ -100,6 +104,7 @@ void vgic_cpu_init(struct vcpu* vcpu);
 void vgic_set_hw(struct vm* vm, irqid_t id);
 void vgic_inject(struct vcpu* vcpu, irqid_t id, vcpuid_t source);
 void vgic_inject_hw(struct vcpu* vcpu, irqid_t id);
+void vgic_inject_msi(struct vcpu* vcpu, irqid_t id);
 
 /* VGIC INTERNALS */
 

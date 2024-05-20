@@ -131,6 +131,7 @@ struct vm* vm_init(struct vm_allocation* vm_alloc, const struct vm_config* confi
     vmid_t vm_id);
 void vm_start(struct vm* vm, vaddr_t entry);
 void vm_emul_add_mem(struct vm* vm, struct emul_mem* emu);
+void vm_emul_rm_mem(struct vm* vm, struct emul_mem* emu);
 void vm_emul_add_reg(struct vm* vm, struct emul_reg* emu);
 emul_handler_t vm_emul_get_mem(struct vm* vm, vaddr_t addr);
 emul_handler_t vm_emul_get_reg(struct vm* vm, vaddr_t addr);
@@ -172,6 +173,10 @@ static inline bool vm_has_interrupt(struct vm* vm, irqid_t int_id)
     return !!bitmap_get(vm->interrupt_bitmap, int_id);
 }
 
+static inline bool vm_has_msi_interrupt(struct vm* vm, irqid_t int_id){
+    return !!bitmap_get(vm->arch.lpis_interrupt_bitmap, int_id);
+}
+
 static inline void vcpu_inject_hw_irq(struct vcpu* vcpu, irqid_t id)
 {
     vcpu_arch_inject_hw_irq(vcpu, id);
@@ -180,6 +185,10 @@ static inline void vcpu_inject_hw_irq(struct vcpu* vcpu, irqid_t id)
 static inline void vcpu_inject_irq(struct vcpu* vcpu, irqid_t id)
 {
     vcpu_arch_inject_irq(vcpu, id);
+}
+
+static inline void vcpu_inject_msi_irq(struct vcpu* vcpu, irqid_t id){
+    vcpu_arch_inject_msi_irq(vcpu, id);
 }
 
 /* ------------------------------------------------------------*/

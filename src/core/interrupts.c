@@ -74,6 +74,11 @@ enum irq_res interrupts_handle(irqid_t int_id)
 
         return FORWARD_TO_VM;
 
+    } else if (vm_has_msi_interrupt(cpu()->vcpu->vm, int_id)){
+        vcpu_inject_msi_irq(cpu()->vcpu, int_id);
+
+        return FORWARD_TO_VM;
+
     } else if (interrupt_assigned_to_hyp(int_id)) {
         interrupt_handlers[int_id](int_id);
 

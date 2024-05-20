@@ -185,17 +185,29 @@ bool proptable_emul_handler(struct emul_access* acc){
 
     //Verify if VM has LPI
     console_printk("[Bao] Inside proptable emul\n");
-    size_t offset = acc->addr - cpu()->vcpu->vm->arch.prop_table_addr;
-    console_printk("[BAO] Value of offset 0x%x\n",offset);
-    /*
-    1. Know the LPI number trying to access
-    We can do this by knowing the address offset with base 
-    */
+    size_t offset = acc->addr - cpu()->vcpu->vm->arch.prop_tab.vm_proptable_vaddr;
+    size_t lpi_id = offset + GIC_FIRST_LPIS;
+    uint64_t tmp_lpi_cfg = vcpu_readreg(cpu()->vcpu, acc->reg);
+    console_printk("[BAO] Value of lpi_id 0x%x\n",lpi_id);
+
     if (!acc->write) { //read from proptable
+        console_printk("[BAO-GICv3] Emul read access to prop table\n");
+    }else{
+        size_t lpi_enable = tmp_lpi_cfg & LPI_CONFIG_EN_MSK;
 
+        if(lpi_enable)
+        {
+            //Add interrupt to BITMAP
+            vm_assign_lpi_interrupt(cpu()->vcpu->vm,lpi_id);
+            console_printk("LPI number %d assigned\n",lpi_id);
+        } else {
+            //clear
+        }
 
-    }else{  //write to proptable
-        *(proptable+offset)= vcpu_readreg(cpu()->vcpu, acc->reg);
+        //Set the LPI in the config table
+        *(cpu()->vcpu->vm->arch.prop_tab.proptab_base + offset)= vcpu_readreg(cpu()->vcpu, acc->reg);
+
+        console_printk("[BAO-GICv3] Emul write access to prop table with value 0x%x\n",tmp_lpi_cfg);
     }
 
     // To-DO error verification
@@ -205,8 +217,8 @@ bool proptable_emul_handler(struct emul_access* acc){
 void vgicr_emul_propbaser_access(struct emul_access* acc, struct vgic_reg_handler_info* handlers,
     bool gicr_access, vcpuid_t vgicr_id) 
 {
-    //ensuring that only the VM with MSI assigned can modify this register
-    //When writing, ensure that that the rCTLR.enableLPIs is zero
+    struct vm *vm = cpu()->vcpu->vm;
+
     if (!acc->write) {
         
         if(cpu()->vcpu->vm->msi)
@@ -229,45 +241,79 @@ void vgicr_emul_propbaser_access(struct emul_access* acc, struct vgic_reg_handle
             console_printk("Redistributor vID is %d and pID is %d\n",vgicr_id,pgicr_id);
 
             //translate to physical
-            paddr_t prop_pa=0;
-            uint64_t tmp = vcpu_readreg(cpu()->vcpu, acc->reg);
-            vaddr_t *propbaser_vaddr = (vaddr_t *)(tmp & GICR_PROPBASER_PHY_ADDR_MSK);
+            uint64_t tmp_propbaser = vcpu_readreg(cpu()->vcpu, acc->reg);
+            paddr_t proptable_pa = 0;
 
-            console_printk("[BAO-VGICV3] Propbaser virtual is 0x%lx\n",propbaser_vaddr);
+            vaddr_t *proptable_vaddr = (vaddr_t *)(tmp_propbaser & GICR_PROPBASER_PHY_ADDR_MSK);
+            size_t id_bits = tmp_propbaser & GICR_PROPBASER_ID_BITS_MSK;
+            size_t proptable_size = GICR_PROPTABLE_SZ(id_bits);
+
+            console_printk("[BAO-VGICV3] Proptable size is 0x%x\n",proptable_size);
+            console_printk("[BAO-VGICV3] Propbaser virtual is 0x%lx\n",proptable_vaddr);
+            mem_guest_ipa_translate(proptable_vaddr,&proptable_pa);
+            console_printk("[BAO-VGICV3] Propbaser phy is 0x%lx\n",proptable_pa);
+
+            if(vm->arch.prop_tab.proptab_base == NULL) {
+
+                vm->arch.prop_tab.proptab_size = proptable_size;
+                vm->arch.prop_tab.proptab_base = (uint8_t *)mem_alloc_map_dev(&cpu()->as, SEC_HYP_VM, INVALID_VA,
+                proptable_pa,NUM_PAGES(vm->arch.prop_tab.proptab_size));
+
+                //Change the proptable to RO in VM space
+                mem_unmap(&vm->as,(vaddr_t)proptable_vaddr,NUM_PAGES(vm->arch.prop_tab.proptab_size),true);
+                mem_alloc_map_flags(&vm->as,SEC_VM_ANY,(vaddr_t)proptable_vaddr,proptable_pa,
+                    NUM_PAGES(vm->arch.prop_tab.proptab_size),PTE_VM_FLAGS_RO);
+
+                //Create emul memory
+                vm->arch.proptable_emul = (struct emul_mem){ .va_base = (vaddr_t)proptable_vaddr,
+                    .size = ALIGN(vm->arch.prop_tab.proptab_size, PAGE_SIZE), //???
+                    .handler = proptable_emul_handler };
+                vm_emul_add_mem(vm, &vm->arch.proptable_emul);
+
+                vm->arch.prop_tab.vm_proptable_vaddr = (vaddr_t)proptable_vaddr;
+            } else {
+                // paddr_t curr_proptable_pa;
+                // mem_translate(&cpu()->as,(vaddr_t)vm->arch.prop_tab->proptab_base,&curr_proptable_pa);
+
+                if((vaddr_t)proptable_vaddr != vm->arch.prop_tab.vm_proptable_vaddr) {
+                    //unmap and map as RW the proptable current region in VM space
+
+                    mem_unmap(&vm->as,vm->arch.prop_tab.vm_proptable_vaddr,vm->arch.prop_tab.proptab_size,true);
+                    mem_alloc_map_flags(&cpu()->vcpu->vm->as,SEC_VM_ANY,(vaddr_t)proptable_vaddr,proptable_pa,
+                    NUM_PAGES(vm->arch.prop_tab.proptab_size),PTE_VM_FLAGS);
+
+                    //unmap of proptable in Bao space
+                    mem_unmap(&cpu()->as,(vaddr_t)vm->arch.prop_tab.proptab_base,vm->arch.prop_tab.proptab_size,true);
 
 
-            mem_guest_ipa_translate(propbaser_vaddr,&prop_pa);
+                    //map of the new proptable region in Bao Space
+                    vm->arch.prop_tab.proptab_size = proptable_size;
+                    vm->arch.prop_tab.proptab_base = (uint8_t *)mem_alloc_map_dev(&cpu()->as, SEC_HYP_VM, INVALID_VA,
+                    proptable_pa,NUM_PAGES(vm->arch.prop_tab.proptab_size));
 
-            console_printk("[BAO-VGICV3] Propbaser phy is 0x%lx\n",prop_pa);
+                    //unmap the current proptable from VM space and map as RO
+                    mem_unmap(&cpu()->as,(vaddr_t)vm->arch.prop_tab.proptab_base,vm->arch.prop_tab.proptab_size,true);
+                    mem_alloc_map_flags(&cpu()->vcpu->vm->as,SEC_VM_ANY,(vaddr_t)proptable_vaddr,proptable_pa,
+                    NUM_PAGES(vm->arch.prop_tab.proptab_size),PTE_VM_FLAGS_RO);
 
-            uint64_t propbaser_paddr = prop_pa |
-                        (tmp & ~GICR_PROPBASER_PHY_ADDR_MSK);
-            cpu()->vcpu->arch.vgic_priv.vgicr.PROPBASER = tmp;
+                    //Change the emul mem
+                    vm_emul_rm_mem(vm, &vm->arch.proptable_emul);
 
-            //map the table to Bao
+                    vm->arch.proptable_emul = (struct emul_mem){ .va_base = (vaddr_t)proptable_vaddr,
+                    .size = ALIGN(vm->arch.prop_tab.proptab_size, PAGE_SIZE), //???
+                    .handler = proptable_emul_handler };
+                    vm_emul_add_mem(vm, &vm->arch.proptable_emul);
 
-            //Unmap the region from VM's space
-            if(vgicr_id == CPU_MASTER)
-            {
-                mem_unmap(&cpu()->vcpu->vm->as,(vaddr_t)propbaser_phy_addr,pages,true); //maybe i dont need to unmap
-                console_printk("[BAO] Unnmap proptable's VM region\n");
+                    vm->arch.prop_tab.vm_proptable_vaddr = (vaddr_t)proptable_vaddr;
+                }
             }
-                //can i call a trap to this region without unmap?
-            cpu()->vcpu->vm->arch.prop_table_addr = (vaddr_t)propbaser_phy_addr;
-            //Add emulated memory
-            cpu()->vcpu->vm->arch.proptable_emul = (struct emul_mem){ .va_base = (vaddr_t)propbaser_phy_addr,
-            .size = size,
-            .handler = proptable_emul_handler };
-            vm_emul_add_mem(cpu()->vcpu->vm, &cpu()->vcpu->vm->arch.proptable_emul);
+            
+            cpu()->vcpu->arch.vgic_priv.vgicr.PROPBASER = tmp_propbaser;
+            gicr[pgicr_id].PROPBASER = proptable_pa |
+                            GICR_PROPBASER_InnerShareable |
+                            GICR_PROPBASER_RaWaWb |
+                            id_bits;
 
-
-
-            //give to the vm only read capacity
-
-            //Add emulated memory to the VM
-
-
-            gicr[pgicr_id].PROPBASER = propbaser_paddr;
             console_printk("VGIC3: Propbaser write from cpu %d -> 0x%x\n",cpu()->id,gicr[pgicr_id].PROPBASER);
         }
     }
@@ -562,6 +608,17 @@ void its_build_sync(struct its_cmd *curr_cmd,
 
 }
 
+void its_build_mapd(struct its_cmd *curr_cmd,
+                    struct its_cmd_desc *desc)
+{
+    its_clear_cmd(curr_cmd);
+    its_encode_cmd(curr_cmd,ITS_MAPD_CMD);
+    its_encode_device_id(curr_cmd,desc->its_mapd_cmd.device_id);
+    its_encode_size(curr_cmd,desc->its_mapd_cmd.size);
+    its_encode_itt_addr(curr_cmd,desc->its_mapd_cmd.itt_addr);
+    its_encode_valid(curr_cmd,desc->its_mapd_cmd.valid);
+}
+
 void its_copy_to_cmdq(struct its_cmd *dest_cmd,
                     struct its_cmd *src_cmd)
 {
@@ -616,6 +673,20 @@ void vgits_emul_cwriter_access(struct emul_access* acc, struct vgic_reg_handler_
                 console_printk("Value of sync target is 0x%x and virtual is 0x%x and cpu is %d\n",pgicr_id,vrdbase,cpu()->id);
                 its_build_sync(its_cmd,&desc);
                 console_printk("BAO-VGICV3: SYNC cmd received\n");
+                break;
+            case ITS_MAPD_CMD:
+                paddr_t itt_paddr;
+                vaddr_t *itt_vaddr = (vaddr_t *)bit64_extract(vm_cmd->cmd[2],0,52);
+                mem_guest_ipa_translate(itt_vaddr,&itt_paddr);
+
+                desc.its_mapd_cmd.device_id = bit64_extract(vm_cmd->cmd[0],32,32);
+                desc.its_mapd_cmd.size = bit64_extract(vm_cmd->cmd[1],0,5);
+                desc.its_mapd_cmd.itt_addr = itt_paddr;
+                desc.its_mapd_cmd.valid = !!bit64_extract(vm_cmd->cmd[2],63,1);
+
+                console_printk("[BAO-VGICv3] In MAPD translation: vaddr= 0x%lx and paddr = 0x%lx\n",itt_vaddr,itt_paddr);
+
+                its_build_mapd(its_cmd,&desc);
                 break;
             default:
                 its_copy_to_cmdq(its_cmd,vm_cmd);
@@ -926,6 +997,7 @@ void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp)
             .size = ALIGN(sizeof(struct gits_hw), PAGE_SIZE),
             .handler = vgits_emul_handler };
         vm_emul_add_mem(vm, &vm->arch.vgits_emul);
+
     }
 
     vm->arch.icc_sgir_emul = (struct emul_reg){ .addr = SYSREG_ENC_ADDR(3, 0, 12, 11, 5),
@@ -961,4 +1033,36 @@ void vgic_cpu_init(struct vcpu* vcpu)
     }
 
     list_init(&vcpu->arch.vgic_spilled);
+}
+
+static inline uint8_t vgic_get_prio_lpi(struct vm *vm, irqid_t id){
+    return vm->arch.prop_tab.proptab_base[id - GIC_FIRST_LPIS] & LPI_CONFIG_PRIO_MSK;
+}
+
+static inline uint8_t vgic_get_en_lpi(struct vm *vm, irqid_t id){
+    return vm->arch.prop_tab.proptab_base[id - GIC_FIRST_LPIS] & LPI_CONFIG_EN_MSK;
+}
+
+struct vgic_int vgic_tmp_lpi(struct vcpu* vcpu, irqid_t id){
+    struct vgic_int interrupt;
+
+    interrupt.owner = vcpu;
+    interrupt.state = PEND;
+    interrupt.in_lr = false;
+    interrupt.id = id;
+    interrupt.prio = vgic_get_prio_lpi(vcpu->vm,id);
+    interrupt.cfg = 0;
+    interrupt.phys.redist = vcpu->phys_id;
+    interrupt.hw = false;
+    interrupt.enabled = vgic_get_en_lpi(vcpu->vm,id);
+
+    console_printk("LPI interrupt %d has priority 0x%x\n",interrupt.id,interrupt.prio);
+
+    return interrupt;
+}
+
+void vgic_inject_msi(struct vcpu* vcpu, irqid_t id){
+    struct vgic_int tmp_interrupt = vgic_tmp_lpi(vcpu,id);
+
+    vgic_add_lr(vcpu,&tmp_interrupt);
 }

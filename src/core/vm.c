@@ -305,6 +305,11 @@ void vm_emul_add_mem(struct vm* vm, struct emul_mem* emu)
     list_push(&vm->emul_mem_list, &emu->node);
 }
 
+void vm_emul_rm_mem(struct vm* vm, struct emul_mem* emu)
+{
+    list_rm(&vm->emul_mem_list, &emu->node);
+}
+
 void vm_emul_add_reg(struct vm* vm, struct emul_reg* emu)
 {
     list_push(&vm->emul_reg_list, &emu->node);

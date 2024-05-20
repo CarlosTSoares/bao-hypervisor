@@ -95,6 +95,7 @@ void vcpu_arch_run(struct vcpu* vcpu)
     }
 }
 
-void vm_add_lpi(struct vm* vm, struct gic_lpi_config* gic_lpi){
-    list_push(&vm->arch.gic_lpi_list, &gic_lpi->node);
+void vm_assign_lpi_interrupt(struct vm* vm, irqid_t int_id)
+{
+    bitmap_set(vm->arch.lpis_interrupt_bitmap, int_id-8192);
 }

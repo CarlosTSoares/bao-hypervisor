@@ -51,7 +51,9 @@ struct vm_arch {
     #if (GIC_VERSION == GICV3)
         struct emul_mem vgits_emul;
         struct vgits vgits;
-        struct list gic_lpi_list;
+        struct proptable prop_tab;
+        struct emul_mem proptable_emul;
+        BITMAP_ALLOC(lpis_interrupt_bitmap, GIC_N_LPIS);
     #endif
 };
 
@@ -79,7 +81,16 @@ static inline void vcpu_arch_inject_irq(struct vcpu* vcpu, irqid_t id)
     vgic_inject(vcpu, id, 0);
 }
 
+static inline void vcpu_arch_inject_msi_irq(struct vcpu* vcpu, irqid_t id){
+    vgic_inject_msi(vcpu, id);
+}
+
+void vm_assign_lpi_interrupt(struct vm* vm, irqid_t int_id);
+
+
+
+
 /*LPI*/
-void vm_add_lpi(struct vm* vm, struct gic_lpi_config* gic_lpi);
+//void vm_add_lpi(struct vm* vm, struct gic_lpi_config* gic_lpi);
 
 #endif /* __ARCH_VM_H__ */

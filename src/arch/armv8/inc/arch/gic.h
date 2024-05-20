@@ -20,6 +20,9 @@
 #define GIC_MAX_VALID_INTERRUPTS  (GIC_FIRST_SPECIAL_INTID)
 #define GIC_MAX_SGIS              16
 #define GIC_MAX_PPIS              16
+#define GIC_N_LPIS                1024
+#define GIC_FIRST_LPIS            8192
+#define GIC_MAX_LPIS              (GIC_FIRST_LPIS + GIC_N_LPIS)
 #define GIC_CPU_PRIV              (GIC_MAX_SGIS + GIC_MAX_PPIS)
 #define GIC_MAX_SPIS              (GIC_MAX_INTERUPTS - GIC_CPU_PRIV)
 #define GIC_PRIO_BITS             8
@@ -159,6 +162,8 @@ struct gicd_hw {
 #define GICR_PROPBASER_InnerShareable           (1ULL << GICR_PROPBASER_SHAREABILITY_OFF)
 #define GICR_PROPBASER_RaWaWb                   (7ULL << GICR_PROPBASER_INNERCACHE_OFF)
 #define GICR_PROPBASER_PHY_ADDR_MSK        (BIT64_MASK(GICR_PROPBASER_PHY_OFF,GICR_PROPBASER_PHY_LEN))
+#define GICR_PROPBASER_ID_BITS_LEN              (5)
+#define GICR_PROPBASER_ID_BITS_MSK         (BIT64_MASK(0,GICR_PROPBASER_ID_BITS_LEN))
 
 #define GICR_PENDBASER_PHY_OFF                  (16)
 #define GICR_PENDBASER_PHY_LEN                  (36)
@@ -167,7 +172,10 @@ struct gicd_hw {
 
 #define GICR_PROPTABLE_SZ(IDbits)               ((1<<(IDbits+1)) - 8192) //maybe not here
 
-
+#define LPI_CONFIG_PRIO_OFF                     (2)
+#define LPI_CONFIG_PRIO_LEN                     (6)
+#define LPI_CONFIG_PRIO_MSK                     (BIT64_MASK(LPI_CONFIG_PRIO_OFF,LPI_CONFIG_PRIO_LEN))
+#define LPI_CONFIG_EN_MSK                       (1)
 
 struct gicr_hw {
     /* RD_base frame */
@@ -464,6 +472,9 @@ void its_encode_cmd(struct its_cmd *cmd, uint8_t cmd_id);
 void its_encode_valid(struct its_cmd *cmd, size_t val);
 void its_encode_target(struct its_cmd *cmd, uint64_t target);
 void its_encode_ic_id(struct its_cmd *cmd, uint64_t ic_id);
+void its_encode_size(struct its_cmd *cmd, uint8_t size);
+void its_encode_itt_addr(struct its_cmd *cmd, uint64_t itt_addr);
+void its_encode_device_id(struct its_cmd *cmd, uint32_t device_id);
 
 extern volatile struct gicd_hw* gicd;
 extern volatile struct gicr_hw* gicr;
@@ -525,6 +536,13 @@ extern volatile struct gicr_hw* gicr;
             } its_sync_cmd;
 
             struct {
+                uint32_t device_id;
+                uint8_t size;
+                uint64_t itt_addr;
+                bool valid;
+            } its_mapd_cmd;
+
+            struct {
                 uint16_t vpe_id;
                 uint64_t target;
                 uint64_t vpt_addr;
@@ -580,6 +598,7 @@ extern volatile struct gicr_hw* gicr;
         /* ITS defines */
     #define ITS_MAPC_CMD            (0x9)     
     #define ITS_SYNC_CMD            (0x5)
+    #define ITS_MAPD_CMD            (0x8)
 
 
     #define ITS_CMD_ENC_OFF         (0)
