@@ -456,6 +456,10 @@ void gicr_set_icfgr(irqid_t int_id, uint8_t cfg, cpuid_t gicr_id);
 void gicr_set_act(irqid_t int_id, bool act, cpuid_t gicr_id);
 uint8_t gicr_get_prio(irqid_t int_id, cpuid_t gicr_id);
 
+bool gicr_get_en_lpis(cpuid_t gicr_id);
+void gicr_set_propbaser(cpuid_t gicr_id, uint64_t phy_addr, size_t id_bits);
+void gicr_set_pendbaser(cpuid_t gicr_id, uint64_t phy_addr);
+
 void gic_maintenance_handler(irqid_t irq_id);
 
 struct its_cmd{

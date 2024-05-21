@@ -8,6 +8,7 @@
         "gic.h": "c",
         "bao.h": "c",
         "vgicv3.h": "c",
-        "vm.h": "c"
+        "vm.h": "c",
+        "type_traits": "c"
     }
 }
