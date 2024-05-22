@@ -229,6 +229,7 @@ static inline void vgic_write_lr(struct vcpu* vcpu, struct vgic_int* interrupt, 
 #endif
     else {
         if (!gic_is_priv(interrupt->id) && !vgic_int_is_hw(interrupt)) {
+            console_printk("[BAO-VGICV3] Enable EOI bit\n");
             lr |= GICH_LR_EOI_BIT;
         }
 
@@ -431,7 +432,8 @@ void vgicd_emul_pidr_access(struct emul_access* acc, struct vgic_reg_handler_inf
     bool gicr_access, cpuid_t vgicr_id)
 {
     if (!acc->write) {
-        vcpu_writereg(cpu()->vcpu, acc->reg, gicd->ID[((acc->addr & 0xff) - 0xd0) / 4]);
+        //vcpu_writereg(cpu()->vcpu, acc->reg, gicd->ID[((acc->addr & 0xff) - 0xd0) / 4]);
+        vcpu_writereg(cpu()->vcpu, acc->reg, 0x3b);
     }
 }
 

@@ -134,12 +134,12 @@ void vgicr_emul_pidr_access(struct emul_access* acc, struct vgic_reg_handler_inf
     bool gicr_access, vcpuid_t vgicr_id)
 {
     if (!acc->write) {
-        unsigned long val = 0;
-        cpuid_t pgicr_id = vm_translate_to_pcpuid(cpu()->vcpu->vm, vgicr_id);
-        if (pgicr_id != INVALID_CPUID) {
-            val = gicr[pgicr_id].ID[((acc->addr & 0xff) - 0xd0) / 4];
-        }
-        vcpu_writereg(cpu()->vcpu, acc->reg, val);
+        //unsigned long val = 0;
+        // cpuid_t pgicr_id = vm_translate_to_pcpuid(cpu()->vcpu->vm, vgicr_id);
+        // if (pgicr_id != INVALID_CPUID) {
+        //     //val = gicr[pgicr_id].ID[((acc->addr & 0xff) - 0xd0) / 4];
+        // }
+        vcpu_writereg(cpu()->vcpu, acc->reg, 0x3b);
     }
 }
 
@@ -782,7 +782,9 @@ void vgits_emul_iidr_access(struct emul_access* acc, struct vgic_reg_handler_inf
 {
     if (!acc->write) { //read only
         console_printk("[BAO-VGICV3] CTRANSLATER write from addr 0x%x\n",acc->addr);
-        vcpu_writereg(cpu()->vcpu, acc->reg,gits->IIDR);
+        vcpu_writereg(cpu()->vcpu, acc->reg,0x3b);  //Only gicv3 is visible for the guest
+
+        console_printk("VGIC3: PIDR2 read from addr 0x%x-> 0x%x\n",acc->addr,gits->ID[((acc->addr & 0xff) - 0xd0) / 4]);
     }
 }
 
@@ -984,15 +986,28 @@ void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp)
     if(vm->msi){
         for (size_t index = 0; index < GIC_MAX_TTD; index++) {
             //TODO -  Verify if flat tables are supported and manage Indirect bit
-
-            vm->arch.vgits.BASER[index]= (gits->BASER[index] & GITS_BASER_RO_MASK);
+            if(bit64_extract(gits->BASER[index], GITS_BASER_TYPE_OFF, GITS_BASER_TYPE_LEN) == 0x2)
+            {
+                console_printk("[BAO-VGICV3] VPE table found\n");
+                vm->arch.vgits.BASER[index]= 0;
+            } else {
+                vm->arch.vgits.BASER[index]= (gits->BASER[index] & GITS_BASER_RO_MASK);
+            }
         }
+
+        //TODO Create typer and pidr2 virtual registers to each VM
+        vm->arch.vgits.TYPER = gits->TYPER & ~GITS_TYPER_VIRT_MSK;
+        console_printk("[BAO-VGICV3] Value of gits ptyper is 0x%lx\n",gits->TYPER);
+        console_printk("[BAO-VGICV3] Value of gits vtyper is 0x%lx\n",vm->arch.vgits.TYPER);
+
+
         vm->arch.vgits_emul = (struct emul_mem){ .va_base = vgic_dscrp->gits_addr,
             .size = ALIGN(sizeof(struct gits_hw), PAGE_SIZE),
             .handler = vgits_emul_handler };
         vm_emul_add_mem(vm, &vm->arch.vgits_emul);
 
     }
+
 
     vm->arch.icc_sgir_emul = (struct emul_reg){ .addr = SYSREG_ENC_ADDR(3, 0, 12, 11, 5),
         .handler = vgic_icc_sgir_handler };
@@ -1056,6 +1071,7 @@ struct vgic_int vgic_tmp_lpi(struct vcpu* vcpu, irqid_t id){
 }
 
 void vgic_inject_msi(struct vcpu* vcpu, irqid_t id){
+
     struct vgic_int tmp_interrupt = vgic_tmp_lpi(vcpu,id);
 
     vgic_add_lr(vcpu,&tmp_interrupt);

@@ -73,31 +73,33 @@ struct vgic_priv {
     struct vgic_int interrupts[GIC_CPU_PRIV];
 };
 
-#if (GIC_VERSION == GICV3)
-    
-    struct vgits_cmdq{
-        struct its_cmd* base_cmdq;
-        size_t page_size; //in pages
-    };
-    
-    struct vgits{
-        spinlock_t lock;
-        struct vgits_cmdq vgits_cmdq;
-        uint64_t CBASER;
-        uint64_t BASER[GIC_MAX_TTD];    
-    };
 
-    struct gic_lpi_interrupt{
-        size_t enable;
-        uint8_t prio;
-    };
+/*Only if givv3 implemented*/
 
-    struct proptable{
-        uint8_t *proptab_base;
-        vaddr_t vm_proptable_vaddr;
-        size_t proptab_size;    //in bytes
-    };
-#endif
+struct vgits_cmdq{
+    struct its_cmd* base_cmdq;
+    size_t page_size; //in pages
+};
+
+struct vgits{
+    spinlock_t lock;
+    struct vgits_cmdq vgits_cmdq;
+    uint64_t CBASER;
+    uint64_t TYPER;
+    uint64_t BASER[GIC_MAX_TTD];    
+};
+
+struct gic_lpi_interrupt{
+    size_t enable;
+    uint8_t prio;
+};
+
+struct proptable{
+    uint8_t *proptab_base;
+    vaddr_t vm_proptable_vaddr;
+    size_t proptab_size;    //in bytes
+};
+
 
 void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp);
 void vgic_cpu_init(struct vcpu* vcpu);

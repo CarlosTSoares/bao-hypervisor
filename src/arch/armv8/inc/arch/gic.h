@@ -484,13 +484,15 @@ extern volatile struct gicd_hw* gicd;
 extern volatile struct gicr_hw* gicr;
 
 
-#if (GIC_VERSION == GICV3)
+//#if (GIC_VERSION == GICV3)
     /*----------- GIC ITS -----------*/
 
     // Define only to GICv3
     // Verify the alignement and the offsets
 
     #define GIC_MAX_TTD               8     //max translation table descriptors
+
+    #define GITS_TYPER_VIRT_MSK             (1ULL << 1)
 
     #define GITS_CBASER_RaWaWb              (7ULL << 59)
     #define GITS_CBASER_InnerShareable      (1ULL << 10)
@@ -523,6 +525,8 @@ extern volatile struct gicr_hw* gicr;
     #define GITS_BASER_InnerShareable           (1ULL << GITS_BASER_SHAREABILITY_OFF)
     #define GITS_BASER_RaWaWb                   (7ULL << GITS_BASER_INNERCACHE_OFF)
     #define GITS_BASER_VAL_BIT                   (1ULL << 63)
+
+    #define GIC_HAS_VLPI(gits)		(!!((gits)->TYPER & GITS_TYPER_VIRT_MSK))
     /*
     * ITS command descriptors - parameters to be encoded in a command
     * block.
@@ -611,7 +615,7 @@ extern volatile struct gicr_hw* gicr;
     #define ITS_CMD_RDBASE_LEN      (35)
 
     extern struct its_cmd *its_cmd_queue;
-#endif
+//#endif
 
 size_t gich_num_lrs();
 

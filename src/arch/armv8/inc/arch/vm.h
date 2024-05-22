@@ -20,9 +20,7 @@ struct arch_vm_platform {
         paddr_t gicd_addr;
         paddr_t gicc_addr;
         paddr_t gicr_addr;
-        #if (GIC_VERSION == GICV3)
-            paddr_t gits_addr;
-        #endif
+        paddr_t gits_addr;      //Only if gicv3
         size_t interrupt_num;
         bool msi;
     } gic;
@@ -48,13 +46,12 @@ struct vm_arch {
     struct emul_mem vgicr_emul;
     struct emul_reg icc_sgir_emul;
     struct emul_reg icc_sre_emul;
-    #if (GIC_VERSION == GICV3)
-        struct emul_mem vgits_emul;
-        struct vgits vgits;
-        struct proptable prop_tab;
-        struct emul_mem proptable_emul;
-        BITMAP_ALLOC(lpis_interrupt_bitmap, GIC_N_LPIS);
-    #endif
+    /*Only if gicv3*/
+    struct emul_mem vgits_emul;
+    struct vgits vgits;
+    struct proptable prop_tab;
+    struct emul_mem proptable_emul;
+    BITMAP_ALLOC(lpis_interrupt_bitmap, GIC_N_LPIS);
 };
 
 struct vcpu_arch {
