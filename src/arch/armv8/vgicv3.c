@@ -1055,17 +1055,19 @@ static inline uint8_t vgic_get_en_lpi(struct vm *vm, irqid_t id){
 struct vgic_int vgic_tmp_lpi(struct vcpu* vcpu, irqid_t id){
     struct vgic_int interrupt;
 
+    interrupt.lock = SPINLOCK_INITVAL;
     interrupt.owner = vcpu;
     interrupt.state = PEND;
     interrupt.in_lr = false;
     interrupt.id = id;
-    interrupt.prio = vgic_get_prio_lpi(vcpu->vm,id);
+    //interrupt.prio = vgic_get_prio_lpi(vcpu->vm,id);
+    interrupt.prio = 0x2;
     interrupt.cfg = 0;
     interrupt.phys.redist = vcpu->phys_id;
     interrupt.hw = false;
     interrupt.enabled = vgic_get_en_lpi(vcpu->vm,id);
 
-    console_printk("LPI interrupt %d has priority 0x%x\n",interrupt.id,interrupt.prio);
+    console_printk("LPI interrupt %d has priority 0x%x and en is %d\n",interrupt.id,interrupt.prio,interrupt.enabled);
 
     return interrupt;
 }
@@ -1073,6 +1075,35 @@ struct vgic_int vgic_tmp_lpi(struct vcpu* vcpu, irqid_t id){
 void vgic_inject_msi(struct vcpu* vcpu, irqid_t id){
 
     struct vgic_int tmp_interrupt = vgic_tmp_lpi(vcpu,id);
+    console_printk("id is %d\n",id);
 
     vgic_add_lr(vcpu,&tmp_interrupt);
+
+
+        // ssize_t lr_ind = -1;
+        // gic_lr_t lr;
+        // uint64_t elrsr = gich_get_elrsr();          //locate a usable List register when hypervisor is delivering an interrupt to a VM
+        // for (size_t i = 0; i < NUM_LRS; i++) {
+        //     if (bit64_get(elrsr, i)) {               //contains a valid interrupt
+        //         lr_ind = i;
+        //         break;
+        //     }
+        // }
+
+        // console_printk("[Bao] List register index: %d\n",lr_ind);
+
+        // if(lr_ind < 0) {
+        //     console_printk("[Bao] Cannot get a List register\n");
+        // } else {
+        //     console_printk("[Bao] List register obtained\n");
+        //     lr = ((id << GICH_LR_VID_OFF) & GICH_LR_VID_MSK);
+        //     lr |= (((gic_lr_t)tmp_interrupt.prio << GICH_LR_PRIO_OFF) & GICH_LR_PRIO_MSK) | GICH_LR_GRP_BIT;
+        //     lr |= GICH_LR_EOI_BIT;
+        //     lr |= ((gic_lr_t)PEND << GICH_LR_STATE_OFF) & GICH_LR_STATE_MSK;
+        //     gich_write_lr(lr_ind, lr);
+
+        //     console_printk("[Bao] List register updated\n");
+        // }
+
+    // console_printk("BACK\n");
 }

@@ -240,6 +240,7 @@ static inline void vgic_write_lr(struct vcpu* vcpu, struct vgic_int* interrupt, 
     interrupt->in_lr = true;
     interrupt->lr = lr_ind;
     vcpu->arch.vgic_priv.curr_lrs[lr_ind] = interrupt->id;
+    console_printk("Value is 0x%lx\n",lr);
     gich_write_lr(lr_ind, lr);
 }
 
@@ -1061,6 +1062,8 @@ void vgic_handle_trapped_eoir(struct vcpu* vcpu)
 {
     uint64_t eisr = gich_get_eisr();
     int64_t lr_ind = bit64_ffs(eisr & BIT64_MASK(0, NUM_LRS));
+
+    console_printk("[BAO] EOIR of LPI done with LR=%d\n",lr_ind);
     while (lr_ind >= 0) {
         unsigned long lr_val = gich_read_lr(lr_ind);
         gich_write_lr(lr_ind, 0);
@@ -1090,9 +1093,9 @@ void vgic_handle_trapped_eoir(struct vcpu* vcpu)
 
 void gic_maintenance_handler(irqid_t irq_id)
 {
-    uint32_t misr = gich_get_misr();
-
     console_printk("[Bao] Inside maintenance handler with irq_id = %d\n",irq_id);
+    
+    uint32_t misr = gich_get_misr();
 
     if (misr & GICH_MISR_EOI) {
         vgic_handle_trapped_eoir(cpu()->vcpu);
