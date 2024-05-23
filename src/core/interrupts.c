@@ -75,6 +75,7 @@ enum irq_res interrupts_handle(irqid_t int_id)
         return FORWARD_TO_VM;
 
     } else if (vm_has_msi_interrupt(cpu()->vcpu->vm, int_id)){
+        console_printk("MSI received\n");
         vcpu_inject_msi_irq(cpu()->vcpu, int_id);
 
         return FORWARD_TO_VM;

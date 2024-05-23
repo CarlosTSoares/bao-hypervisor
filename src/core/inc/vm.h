@@ -174,7 +174,10 @@ static inline bool vm_has_interrupt(struct vm* vm, irqid_t int_id)
 }
 
 static inline bool vm_has_msi_interrupt(struct vm* vm, irqid_t int_id){
-    return !!bitmap_get(vm->arch.lpis_interrupt_bitmap, int_id);
+    if(int_id >= GIC_FIRST_LPIS && int_id <= GIC_MAX_LPIS)
+        return !!bitmap_get(vm->arch.lpis_interrupt_bitmap, int_id - GIC_FIRST_LPIS);
+    else
+        return 0;
 }
 
 static inline void vcpu_inject_hw_irq(struct vcpu* vcpu, irqid_t id)
