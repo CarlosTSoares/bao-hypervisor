@@ -172,6 +172,9 @@ struct gicd_hw {
 
 #define GICR_PROPTABLE_SZ(IDbits)               ((1<<(IDbits+1)) - 8192) //maybe not here
 
+#define GICR_VPENDBASER_IDAI_BIT                (1ULL << 62)
+#define GICR_VPENDBASER_VAL_BIT                 (1ULL << 63)
+
 #define LPI_CONFIG_PRIO_OFF                     (2)
 #define LPI_CONFIG_PRIO_LEN                     (6)
 #define LPI_CONFIG_PRIO_MSK                     (BIT64_MASK(LPI_CONFIG_PRIO_OFF,LPI_CONFIG_PRIO_LEN))
@@ -224,6 +227,17 @@ struct gicr_hw {
     uint32_t IGRPMODR0;
     uint8_t pad16[0x0e00 - 0xd04];
     uint32_t NSACR;
+
+    /* VLPI_base frame - only if gicv4 available*/
+    uint8_t vlpi_base[0] __attribute__((aligned(0x10000)));
+    uint8_t pad17[0x70 - 0x00];
+    uint64_t VPROPBASER;
+    uint64_t VPENDBASER;
+    uint8_t pad18[0x10000 - 0x80];
+
+    /* Reserved_base frame - only if gicv4 available*/
+    uint8_t reserved_base[0] __attribute__((aligned(0x10000)));
+    uint8_t pad19[0x10000];
 } __attribute__((__packed__, aligned(0x10000)));
 
 /* CPU Interface Control Register, GICC_CTLR */
@@ -459,6 +473,8 @@ uint8_t gicr_get_prio(irqid_t int_id, cpuid_t gicr_id);
 bool gicr_get_en_lpis(cpuid_t gicr_id);
 void gicr_set_propbaser(cpuid_t gicr_id, uint64_t phy_addr, size_t id_bits);
 void gicr_set_pendbaser(cpuid_t gicr_id, uint64_t phy_addr);
+void gicr_set_vpropbaser(cpuid_t gicr_id, uint64_t phy_addr, size_t id_bits);
+void gicr_set_vpendbaser(cpuid_t gicr_id, uint64_t phy_addr);
 
 void gic_maintenance_handler(irqid_t irq_id);
 
@@ -479,6 +495,13 @@ void its_encode_ic_id(struct its_cmd *cmd, uint64_t ic_id);
 void its_encode_size(struct its_cmd *cmd, uint8_t size);
 void its_encode_itt_addr(struct its_cmd *cmd, uint64_t itt_addr);
 void its_encode_device_id(struct its_cmd *cmd, uint32_t device_id);
+
+void its_encode_vpe_id(struct its_cmd *cmd, uint16_t vpe_id);
+void its_encode_vpt_addr(struct its_cmd *cmd, uint64_t vpt_addr);
+void its_encode_vpt_size(struct its_cmd *cmd, uint8_t vpt_sz);
+void its_encode_event_id(struct its_cmd *cmd, uint32_t event_id);
+void its_encode_db_id(struct its_cmd *cmd, uint32_t db_id);
+void its_encode_virt_id(struct its_cmd *cmd, uint32_t virt_id);
 
 extern volatile struct gicd_hw* gicd;
 extern volatile struct gicr_hw* gicr;
@@ -551,9 +574,15 @@ extern volatile struct gicr_hw* gicr;
             } its_mapd_cmd;
 
             struct {
+                uint32_t device_id;
+                uint32_t event_id;
+            } its_inv_cmd;
+
+            struct {
                 uint16_t vpe_id;
                 uint64_t target;
                 uint64_t vpt_addr;
+                uint8_t vpt_size;
                 bool valid;
             } its_vmapp_cmd;
 
@@ -603,10 +632,19 @@ extern volatile struct gicr_hw* gicr;
 
     #define ITS_CMD_QUEUE_N_PAGE     16
 
-        /* ITS defines */
-    #define ITS_MAPC_CMD            (0x9)     
-    #define ITS_SYNC_CMD            (0x5)
-    #define ITS_MAPD_CMD            (0x8)
+    /* ITS defines */
+    #define ITS_MAPC_CMD            (0x09)     
+    #define ITS_SYNC_CMD            (0x05)
+    #define ITS_MAPD_CMD            (0x08)
+    #define ITS_INV_CMD             (0x0C)
+    #define ITS_MAPI_CMD            (0x0B)
+    #define ITS_INVALL_CMD          (0x0D)
+    #define ITS_MAPTI_CMD           (0x0A)
+
+    #define ITS_VMAPP_CMD           (0x29)
+    #define ITS_VSYNC_CMD           (0x25)
+    #define ITS_VINVALL_CMD         (0x2D)
+    #define ITS_VMAPTI_CMD          (0x2A)
 
 
     #define ITS_CMD_ENC_OFF         (0)

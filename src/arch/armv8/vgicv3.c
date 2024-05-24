@@ -307,7 +307,12 @@ void vgicr_emul_propbaser_access(struct emul_access* acc, struct vgic_reg_handle
             }
             
             cpu()->vcpu->arch.vgic_priv.vgicr.PROPBASER = tmp_propbaser;
-            gicr_set_propbaser(pgicr_id,proptable_pa,id_bits);
+
+            if(GIC_HAS_VLPI(gits))
+                gicr_set_vpropbaser(pgicr_id,proptable_pa,id_bits);
+            else
+                gicr_set_propbaser(pgicr_id,proptable_pa,id_bits);
+            
 
             console_printk("VGIC3: Propbaser write from cpu %d -> 0x%x\n",cpu()->id,gicr[pgicr_id].PROPBASER);
         }
@@ -349,8 +354,11 @@ void vgicr_emul_pendbaser_access(struct emul_access* acc, struct vgic_reg_handle
             // uint64_t pendbaser_paddr = pend_pa |
             //             (tmp & ~GICR_PENDBASER_PHY_ADDR_MSK);
             cpu()->vcpu->arch.vgic_priv.vgicr.PENDBASER = tmp;
-            gicr_set_pendbaser(pgicr_id,pend_pa);
-            //gicr[pgicr_id].PENDBASER = pendbaser_paddr;
+
+            if(GIC_HAS_VLPI(gits))
+                gicr_set_vpendbaser(pgicr_id,pend_pa);
+            else
+                gicr_set_pendbaser(pgicr_id,pend_pa);
         }
     }
 }
@@ -610,6 +618,90 @@ void its_build_mapd(struct its_cmd *curr_cmd,
     its_encode_size(curr_cmd,desc->its_mapd_cmd.size);
     its_encode_itt_addr(curr_cmd,desc->its_mapd_cmd.itt_addr);
     its_encode_valid(curr_cmd,desc->its_mapd_cmd.valid);
+    console_printk("[BAO-VGICV3] Value of command pointed by cwriter in cpu %d is\n"
+        "1- 0x%lx\n"
+        "2- 0x%lx\n"    
+        "3- 0x%lx\n"    
+        "4- 0x%lx\n\n",cpu()->id,curr_cmd->cmd[0],curr_cmd->cmd[1],curr_cmd->cmd[2],curr_cmd->cmd[3]);
+}
+
+void its_build_inv(struct its_cmd *curr_cmd,
+                    struct its_cmd_desc *desc)
+{
+    its_clear_cmd(curr_cmd);
+    its_encode_cmd(curr_cmd,ITS_INV_CMD);
+    its_encode_device_id(curr_cmd,desc->its_inv_cmd.device_id);
+    its_encode_event_id(curr_cmd,desc->its_inv_cmd.event_id);
+    console_printk("[BAO-VGICV3] Value of command pointed by cwriter in cpu %d is\n"
+    "1- 0x%lx\n"
+    "2- 0x%lx\n"    
+    "3- 0x%lx\n"    
+    "4- 0x%lx\n\n",cpu()->id,curr_cmd->cmd[0],curr_cmd->cmd[1],curr_cmd->cmd[2],curr_cmd->cmd[3]);
+
+}
+
+void its_build_vmapp(struct its_cmd *curr_cmd,
+                    struct its_cmd_desc *desc)
+{
+    console_printk("Build vmapp command\n");
+    its_clear_cmd(curr_cmd);
+    its_encode_cmd(curr_cmd,ITS_VMAPP_CMD);
+    its_encode_vpe_id(curr_cmd,desc->its_vmapp_cmd.vpe_id); 
+    its_encode_valid(curr_cmd,desc->its_vmapp_cmd.valid);
+    its_encode_target(curr_cmd,desc->its_vmapp_cmd.target);
+    its_encode_vpt_addr(curr_cmd,desc->its_vmapp_cmd.vpt_addr);
+    its_encode_vpt_size(curr_cmd,16);
+    // console_printk("[BAO-VGICv3] ID is 0x%x\n",ITS_VMAPP_CMD);
+    // console_printk("[BAO-VGICv3] VPE ID is 0x%x\n",desc->its_vmapp_cmd.vpe_id);
+    // console_printk("[BAO-VGICv3] Valid is 0x%x\n",desc->its_vmapp_cmd.target);
+    // console_printk("[BAO-VGICv3] Target is 0x%x\n",desc->its_vmapp_cmd.target);
+    // console_printk("[BAO-VGICv3] VPT_addr is 0x%lx\n",desc->its_vmapp_cmd.vpt_addr);
+    // console_printk("[BAO-VGICv3] VPT_SZ is 0x%x\n",16);
+    console_printk("[BAO-VGICV3] Value of command pointed by cwriter in cpu %d is\n"
+        "1- 0x%lx\n"
+        "2- 0x%lx\n"    
+        "3- 0x%lx\n"    
+        "4- 0x%lx\n\n",cpu()->id,curr_cmd->cmd[0],curr_cmd->cmd[1],curr_cmd->cmd[2],curr_cmd->cmd[3]);
+
+
+}
+
+void its_build_vsync(struct its_cmd* curr_cmd, 
+                struct its_cmd_desc *desc)
+{
+    its_clear_cmd(curr_cmd);
+    its_encode_cmd(curr_cmd,ITS_VSYNC_CMD);
+    its_encode_vpe_id(curr_cmd,desc->its_vmovi_cmd.vpe_id);
+}
+
+void its_build_vinvall(struct its_cmd* curr_cmd, 
+                struct its_cmd_desc *desc)
+{
+    its_clear_cmd(curr_cmd);
+    its_encode_cmd(curr_cmd,ITS_VINVALL_CMD);
+    its_encode_vpe_id(curr_cmd,desc->its_vinvall_cmd.vpe_id);
+}
+
+void its_build_vmapti(struct its_cmd* curr_cmd, 
+                struct its_cmd_desc *desc)
+{
+    its_clear_cmd(curr_cmd);
+    its_encode_cmd(curr_cmd,ITS_VMAPTI_CMD);
+    its_encode_vpe_id(curr_cmd,desc->its_vmapti_cmd.vpe_id);
+    its_encode_device_id(curr_cmd,desc->its_vmapti_cmd.device_id);
+    its_encode_event_id(curr_cmd,desc->its_vmapti_cmd.event_id);
+    // if()
+    //     its_encode_db_id();
+    // else
+    its_encode_db_id(curr_cmd,desc->its_vmapti_cmd.db_id);
+
+    its_encode_virt_id(curr_cmd,desc->its_vmapti_cmd.virt_id);
+
+    console_printk("[BAO-VGICV3] Value of command pointed by cwriter in cpu %d is\n"
+        "1- 0x%lx\n"
+        "2- 0x%lx\n"    
+        "3- 0x%lx\n"    
+        "4- 0x%lx\n\n",cpu()->id,curr_cmd->cmd[0],curr_cmd->cmd[1],curr_cmd->cmd[2],curr_cmd->cmd[3]);
 }
 
 void its_copy_to_cmdq(struct its_cmd *dest_cmd,
@@ -668,6 +760,84 @@ void its_translate_cmd(struct its_cmd *dest_cmd,
     }
 }
 
+void its_translate_cmdv4(struct its_cmd *dest_cmd,
+                    struct its_cmd *src_cmd)
+{
+    vcpuid_t vrdbase;
+    cpuid_t pgicr_id;
+    struct its_cmd_desc desc;
+
+    switch (GITS_CMD_MASK(src_cmd)) {
+        case ITS_MAPC_CMD:
+
+            paddr_t pa_vpt;
+            struct vcpu *target_vcpu;
+
+            vrdbase = bit64_extract(src_cmd->cmd[2],ITS_CMD_RDBASE_OFF,ITS_CMD_RDBASE_LEN);
+            pgicr_id = vm_translate_to_pcpuid(cpu()->vcpu->vm, vrdbase); //ERROR verification
+            target_vcpu = vm_get_vcpu(cpu()->vcpu->vm, vrdbase);
+            mem_guest_ipa_translate((vaddr_t*)(target_vcpu->arch.vgic_priv.vgicr.PENDBASER & GICR_PENDBASER_PHY_ADDR_MSK),&pa_vpt);
+            console_printk("[BAO-VGICV3] Pendbaser phy is 0x%lx\n",pa_vpt);
+
+            //with some VM requires other logic
+            desc.its_vmapp_cmd.vpe_id = bit64_extract(src_cmd->cmd[2],0,12);   //See imple defined sizes
+            desc.its_vmapp_cmd.target = pgicr_id;
+            desc.its_vmapp_cmd.vpt_addr = pa_vpt;   //review
+            desc.its_vmapp_cmd.vpt_size = bit64_extract(src_cmd->cmd[3],0,5);
+            desc.its_vmapp_cmd.valid = !!bit64_extract(src_cmd->cmd[2],63,1);
+            
+            its_build_vmapp(dest_cmd,&desc);
+
+            console_printk("BAO-VGICV3: MAPC cmd received\n");
+            break;
+        case ITS_INVALL_CMD:
+            // TODO - vpe_id receives the same value as the collection
+            desc.its_vinvall_cmd.vpe_id = 0; //store the vpe info
+            its_build_vinvall(dest_cmd,&desc);
+            console_printk("BAO-VGICV3: INVALL cmd received\n");
+            break;
+        case ITS_MAPTI_CMD:
+            desc.its_vmapti_cmd.device_id = bit64_extract(src_cmd->cmd[0],32,32);
+            desc.its_vmapti_cmd.event_id = bit64_extract(src_cmd->cmd[1],0,32);
+            desc.its_vmapti_cmd.virt_id = bit64_extract(src_cmd->cmd[1],32,32);
+            desc.its_vmapti_cmd.vpe_id = 0; //store the vpe info
+            desc.its_vmapti_cmd.db_id = 8192;
+
+            its_build_vmapti(dest_cmd,&desc);
+            console_printk("BAO-VGICV3: MAPTI cmd received\n");
+            break;
+        case ITS_SYNC_CMD:
+            desc.its_vmovi_cmd.vpe_id = 0; //store the vpe info
+            its_build_vsync(dest_cmd,&desc);
+            console_printk("BAO-VGICV3: SYNC cmd received\n");
+            break;
+        case ITS_INV_CMD:
+            console_printk("BAO-VGICV3: MAPI cmd received\n");
+            desc.its_inv_cmd.device_id = bit64_extract(src_cmd->cmd[0],32,32);
+            desc.its_inv_cmd.event_id = bit64_extract(src_cmd->cmd[1],0,32);
+
+            its_build_inv(dest_cmd,&desc);
+            break;
+        case ITS_MAPD_CMD:
+            paddr_t itt_paddr;
+            vaddr_t *itt_vaddr = (vaddr_t *)bit64_extract(src_cmd->cmd[2],0,52);
+            mem_guest_ipa_translate(itt_vaddr,&itt_paddr);
+
+            console_printk("[BAO-VGICv3] ITT paddr is 0x%lx and vaddr is 0x%lx\n",itt_vaddr,itt_paddr);
+
+            desc.its_mapd_cmd.device_id = bit64_extract(src_cmd->cmd[0],32,32);
+            desc.its_mapd_cmd.size = bit64_extract(src_cmd->cmd[1],0,5);
+            desc.its_mapd_cmd.itt_addr = itt_paddr;
+            desc.its_mapd_cmd.valid = !!bit64_extract(src_cmd->cmd[2],63,1);
+
+            its_build_mapd(dest_cmd,&desc);
+            console_printk("BAO-VGICV3: MAPD cmd received\n");
+            break;
+        default:
+            console_printk("BAO-VGICV3: Other cmd received -> 0x%x\n",GITS_CMD_MASK(src_cmd));        
+    }
+}
+
 void vgits_emul_cwriter_access(struct emul_access* acc, struct vgic_reg_handler_info* handlers,
     bool gicr_access, vcpuid_t vgicr_id) 
 {
@@ -694,7 +864,10 @@ void vgits_emul_cwriter_access(struct emul_access* acc, struct vgic_reg_handler_
         
         while(n_cmd-- > 0)
         {
-            its_translate_cmd(its_cmd,vm_cmd);
+            if(GIC_HAS_VLPI(gits))
+                its_translate_cmdv4(its_cmd,vm_cmd);
+            else
+                its_translate_cmd(its_cmd,vm_cmd);
             vm_cmd++;
             its_cmd++;
         }
@@ -977,6 +1150,7 @@ void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp)
     }
     /*GIC version of cpu interface*/
 
+    //This must be modified, in gicv4 only the first 2 frames can be emulated.
     vm->arch.vgicr_emul = (struct emul_mem){ .va_base = vgic_dscrp->gicr_addr,
         .size = ALIGN(sizeof(struct gicr_hw), PAGE_SIZE) * vm->cpu_num,
         .handler = vgicr_emul_handler };
@@ -1060,8 +1234,7 @@ struct vgic_int vgic_tmp_lpi(struct vcpu* vcpu, irqid_t id){
     interrupt.state = PEND;
     interrupt.in_lr = false;
     interrupt.id = id;
-    //interrupt.prio = vgic_get_prio_lpi(vcpu->vm,id);
-    interrupt.prio = 0x2;
+    interrupt.prio = vgic_get_prio_lpi(vcpu->vm,id);
     interrupt.cfg = 0;
     interrupt.phys.redist = vcpu->phys_id;
     interrupt.hw = false;
@@ -1075,35 +1248,6 @@ struct vgic_int vgic_tmp_lpi(struct vcpu* vcpu, irqid_t id){
 void vgic_inject_msi(struct vcpu* vcpu, irqid_t id){
 
     struct vgic_int tmp_interrupt = vgic_tmp_lpi(vcpu,id);
-    console_printk("id is %d\n",id);
 
     vgic_add_lr(vcpu,&tmp_interrupt);
-
-
-        // ssize_t lr_ind = -1;
-        // gic_lr_t lr;
-        // uint64_t elrsr = gich_get_elrsr();          //locate a usable List register when hypervisor is delivering an interrupt to a VM
-        // for (size_t i = 0; i < NUM_LRS; i++) {
-        //     if (bit64_get(elrsr, i)) {               //contains a valid interrupt
-        //         lr_ind = i;
-        //         break;
-        //     }
-        // }
-
-        // console_printk("[Bao] List register index: %d\n",lr_ind);
-
-        // if(lr_ind < 0) {
-        //     console_printk("[Bao] Cannot get a List register\n");
-        // } else {
-        //     console_printk("[Bao] List register obtained\n");
-        //     lr = ((id << GICH_LR_VID_OFF) & GICH_LR_VID_MSK);
-        //     lr |= (((gic_lr_t)tmp_interrupt.prio << GICH_LR_PRIO_OFF) & GICH_LR_PRIO_MSK) | GICH_LR_GRP_BIT;
-        //     lr |= GICH_LR_EOI_BIT;
-        //     lr |= ((gic_lr_t)PEND << GICH_LR_STATE_OFF) & GICH_LR_STATE_MSK;
-        //     gich_write_lr(lr_ind, lr);
-
-        //     console_printk("[Bao] List register updated\n");
-        // }
-
-    // console_printk("BACK\n");
 }

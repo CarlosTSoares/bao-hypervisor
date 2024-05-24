@@ -240,7 +240,6 @@ static inline void vgic_write_lr(struct vcpu* vcpu, struct vgic_int* interrupt, 
     interrupt->in_lr = true;
     interrupt->lr = lr_ind;
     vcpu->arch.vgic_priv.curr_lrs[lr_ind] = interrupt->id;
-    console_printk("Value is 0x%lx\n",lr);
     gich_write_lr(lr_ind, lr);
 }
 
@@ -1060,6 +1059,7 @@ static void vgic_eoir_highest_spilled_active(struct vcpu* vcpu)
 
 void vgic_handle_trapped_eoir(struct vcpu* vcpu)
 {
+    irqid_t vid;
     uint64_t eisr = gich_get_eisr();
     int64_t lr_ind = bit64_ffs(eisr & BIT64_MASK(0, NUM_LRS));
 
@@ -1068,24 +1068,26 @@ void vgic_handle_trapped_eoir(struct vcpu* vcpu)
         unsigned long lr_val = gich_read_lr(lr_ind);
         gich_write_lr(lr_ind, 0);
 
-        if(GICH_LR_VID(lr_val) < 8192) {
-            struct vgic_int* interrupt = vgic_get_int(vcpu, GICH_LR_VID(lr_val), vcpu->id);
-            if (interrupt == NULL) {
-                continue;
+        vid = GICH_LR_VID(lr_val);
+        struct vgic_int* interrupt = vgic_get_int(vcpu, vid, vcpu->id);
+        if (interrupt == NULL) {
+            if(vid >= GIC_FIRST_LPIS && vid <= GIC_MAX_LPIS)
+            {
+                eisr = gich_get_eisr();
+                lr_ind = bit64_ffs(eisr & BIT64_MASK(0, NUM_LRS));
             }
-
-            spin_lock(&interrupt->lock);
-            interrupt->in_lr = false;
-            if (interrupt->id < GIC_MAX_SGIS) {
-                vgic_add_lr(vcpu, interrupt);
-            } else {
-                vgic_yield_ownership(vcpu, interrupt);
-            }
-            spin_unlock(&interrupt->lock);
-        } else {
-            // To-do remove lr from interrupt LPI struct
-            console_printk("[BAO] EOIR of LPI done with LR=%d\n",lr_ind);
+            continue;
         }
+
+        spin_lock(&interrupt->lock);
+        interrupt->in_lr = false;
+        if (interrupt->id < GIC_MAX_SGIS) {
+            vgic_add_lr(vcpu, interrupt);
+        } else {
+            vgic_yield_ownership(vcpu, interrupt);
+        }
+        spin_unlock(&interrupt->lock);
+
         eisr = gich_get_eisr();
         lr_ind = bit64_ffs(eisr & BIT64_MASK(0, NUM_LRS));
     }
@@ -1114,7 +1116,6 @@ void gic_maintenance_handler(irqid_t irq_id)
             hcr_el2 = gich_get_hcr();
         }
     }
-    console_printk("[Bao] Inside maintenance handler end\n");
 }
 
 size_t vgic_get_itln(const struct vgic_dscrp* vgic_dscrp)

@@ -132,43 +132,13 @@ void gic_handle()
     uint32_t ack = gicc_iar();  //ack
     irqid_t id = bit32_extract(ack, GICC_IAR_ID_OFF, GICC_IAR_ID_LEN);
 
-    if (id < GIC_FIRST_SPECIAL_INTID) {
-        // if(id != 27 && id != 78 && id != 1 && id != 79)
-        //     console_printk("BAO: Interrupt received wiht ID - %d\n",id);
+    if (id < GIC_FIRST_SPECIAL_INTID || (id >= GIC_FIRST_LPIS && id <= GIC_MAX_LPIS)) {
         enum irq_res res = interrupts_handle(id);
         gicc_eoir(ack);         //gic end of interrupt
         if (res == HANDLED_BY_HYP) {
-            console_printk("Dea hyp\n");
             gicc_dir(ack);      //gic desactivate interrupt
         }
     } else {
-                /*List register available*/
-        ssize_t lr_ind = -1;
-        gic_lr_t lr;
-        uint64_t elrsr = gich_get_elrsr();          //locate a usable List register when hypervisor is delivering an interrupt to a VM
-        for (size_t i = 0; i < NUM_LRS; i++) {
-            if (bit64_get(elrsr, i)) {               //contains a valid interrupt
-                lr_ind = i;
-                break;
-            }
-        }
-
-        console_printk("[Bao] List register index: %d\n",lr_ind);
-
-        if(lr_ind < 0) {
-            console_printk("[Bao] Cannot get a List register\n");
-        } else {
-            console_printk("[Bao] List register obtained\n");
-            lr = ((id << GICH_LR_VID_OFF) & GICH_LR_VID_MSK);
-            lr |= (((gic_lr_t)0x02 << GICH_LR_PRIO_OFF) & GICH_LR_PRIO_MSK) | GICH_LR_GRP_BIT;
-            lr |= GICH_LR_EOI_BIT;
-            lr |= ((gic_lr_t)PEND << GICH_LR_STATE_OFF) & GICH_LR_STATE_MSK;
-            gich_write_lr(lr_ind, lr);
-
-            console_printk("[Bao] List register updated\n");
-        }
-        gicc_eoir(ack);
-
         console_printk("[BAO] Interrupt received wiht ID out of range - %d\n",id);
     }
 }
@@ -278,4 +248,27 @@ void its_encode_size(struct its_cmd *cmd, uint8_t size){
 void its_encode_itt_addr(struct its_cmd *cmd, uint64_t itt_addr)
 {
     its_mask_encode(&cmd->cmd[2],itt_addr,0,52);
+}
+
+/*ITSv4 support*/
+void its_encode_vpe_id(struct its_cmd *cmd, uint16_t vpe_id){
+    its_mask_encode(&cmd->cmd[1],vpe_id,32,16); 
+}
+void its_encode_vpt_addr(struct its_cmd *cmd, uint64_t vpt_addr){
+    its_mask_encode(&cmd->cmd[3],(vpt_addr>>16),16,36); 
+}
+void its_encode_vpt_size(struct its_cmd *cmd, uint8_t vpt_sz){
+    its_mask_encode(&cmd->cmd[3],vpt_sz-1,0,5);
+}
+void its_encode_event_id(struct its_cmd *cmd, uint32_t event_id)
+{
+    its_mask_encode(&cmd->cmd[1],event_id,0,32);
+}
+void its_encode_db_id(struct its_cmd *cmd, uint32_t db_id)
+{
+    its_mask_encode(&cmd->cmd[2],db_id,32,32);
+}
+void its_encode_virt_id(struct its_cmd *cmd, uint32_t virt_id)
+{
+    its_mask_encode(&cmd->cmd[2],virt_id,0,32);
 }
