@@ -18,11 +18,9 @@ volatile struct gits_hw* gits;
 struct its_cmd *its_cmd_queue;
 
 
-/*GICv3 LPI configuration table pointer*/
-
 static spinlock_t gicd_lock = SPINLOCK_INITVAL;
-static spinlock_t gicr_lock = SPINLOCK_INITVAL;
 static spinlock_t gits_lock = SPINLOCK_INITVAL;
+spinlock_t gicr_lock = SPINLOCK_INITVAL;
 
 
 size_t NUM_LRS;
@@ -105,6 +103,7 @@ void gic_map_mmio()
 {
     gicd = (void*)mem_alloc_map_dev(&cpu()->as, SEC_HYP_GLOBAL, INVALID_VA,
         platform.arch.gic.gicd_addr, NUM_PAGES(sizeof(struct gicd_hw)));
+
     gicr = (void*)mem_alloc_map_dev(&cpu()->as, SEC_HYP_GLOBAL, INVALID_VA,
         platform.arch.gic.gicr_addr, NUM_PAGES(sizeof(struct gicr_hw) * PLAT_CPU_NUM));
 }
@@ -342,28 +341,6 @@ void gicr_set_pendbaser(cpuid_t gicr_id, uint64_t phy_addr){
     spin_unlock(&gicr_lock);
 }
 
-void gicr_set_vpropbaser(cpuid_t gicr_id, uint64_t phy_addr, size_t id_bits){
-    spin_lock(&gicr_lock);
-    gicr[gicr_id].VPROPBASER = phy_addr |
-                            GICR_PROPBASER_InnerShareable |
-                            GICR_PROPBASER_RaWaWb |
-                            id_bits;
-    spin_unlock(&gicr_lock);
-}
-
-void gicr_set_vpendbaser(cpuid_t gicr_id, uint64_t phy_addr){
-
-    if((gicr[gicr_id].VPENDBASER & GICR_VPENDBASER_VAL_BIT) == 0){
-        spin_lock(&gicr_lock);
-        gicr[gicr_id].VPENDBASER = phy_addr |
-                                GICR_PROPBASER_InnerShareable |
-                                GICR_PROPBASER_RaWaWb |
-                                GICR_VPENDBASER_VAL_BIT | GICR_VPENDBASER_IDAI_BIT;
-        spin_unlock(&gicr_lock);
-        console_printk("[BAO-GICv3] VPENDBASER assigned\n");
-    }
-}
-
 /* ITS */
 void gits_set_baser(paddr_t paddr, size_t index){
     spin_lock(&gits_lock);
@@ -378,6 +355,15 @@ void gits_set_baser_val(size_t index){
     gits->BASER[index] |= GITS_BASER_VAL_BIT;
     spin_unlock(&gits_lock);
 }
+
+/* This 
+*
+*
+*
+*/
+// void gits_cids_bits(struct gits_hw *gits){
+//     return (gits->TYPER & GITS_TYPER_CIL_BIT)? ((gits->TYPER & GITS_TYPER_CID_MSK) >> GITS_TYPER_CID_OFF) : ITS_COLL_BITS_MAX;
+// }
 
 static inline void gic_alloc_cmd_queue(){
     paddr_t cmd_queue_pa;
@@ -411,7 +397,7 @@ static inline void gic_alloc_coll_table(){
 
     for (size_t index = 0; index < GIC_MAX_TTD; index++) {
         //TODO -  Verify if flat tables are supported and manage Indirect bit
-        if(bit64_extract(gits->BASER[index], GITS_BASER_TYPE_OFF, GITS_BASER_TYPE_LEN) == 0x4)
+        if(bit64_extract(gits->BASER[index], GITS_BASER_TYPE_OFF, GITS_BASER_TYPE_LEN) == GITS_BASER_COLLT_TYPE)
         {
             gits_set_baser(pages.base,index);
             gits_set_baser_val(index);
@@ -420,9 +406,6 @@ static inline void gic_alloc_coll_table(){
     }
 }
 
-// vaddr_t gic_get_cmd_queue_base(){
-//     return (vaddr_t)its_cmd_queue;
-// }
 
 /* This is a gicv4 function*/
 void gic_alloc_vpe_table(){
@@ -433,13 +416,12 @@ void gic_alloc_vpe_table(){
 
     for (size_t index = 0; index < GIC_MAX_TTD; index++) {
         //TODO -  Verify if flat tables are supported and manage Indirect bit
-        if(bit64_extract(gits->BASER[index], GITS_BASER_TYPE_OFF, GITS_BASER_TYPE_LEN) == 0x2)
+        if(bit64_extract(gits->BASER[index], GITS_BASER_TYPE_OFF, GITS_BASER_TYPE_LEN) == GITS_BASER_VPET_TYPE)
         {
             console_printk("[BAO-GICV3] VPE table found is 0x%lx\n",gits->BASER[index]);
             gits_set_baser(pages.base,index);
             gits_set_baser_val(index);
             console_printk("[BAO-GICV3] VPE table found is 0x%lx\n",gits->BASER[index]);
-
         }
     }
 }
@@ -447,12 +429,14 @@ void gic_alloc_vpe_table(){
 
 void its_init()
 {
-    // TODO: create more structures to store alloc information
     gic_alloc_cmd_queue();
     gic_alloc_coll_table();
 
-    if(GIC_HAS_VLPI(gits)){
-        console_printk("[BAO-GICv3] ITS supports direct LPI injection\n");
-        gic_alloc_vpe_table();
-    }
+    #if (GIC_VERSION == GICV4)
+        if(GIC_HAS_VLPI(gits)){
+            gic_alloc_vpe_table();
+        } else {
+            ERROR("Platform has GICv4 but doesn't support direct LPI injection");
+        }
+    #endif
 }

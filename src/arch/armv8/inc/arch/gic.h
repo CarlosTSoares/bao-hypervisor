@@ -14,6 +14,7 @@
 
 #define GICV2                     (2)
 #define GICV3                     (3)
+#define GICV4                     (4)
 
 #define GIC_FIRST_SPECIAL_INTID   (1020)
 #define GIC_MAX_INTERUPTS         1024
@@ -180,6 +181,15 @@ struct gicd_hw {
 #define LPI_CONFIG_PRIO_MSK                     (BIT64_MASK(LPI_CONFIG_PRIO_OFF,LPI_CONFIG_PRIO_LEN))
 #define LPI_CONFIG_EN_MSK                       (1)
 
+#if (GIC_VERSION == GICV3)
+    #define GICR_VFRAME_SIZE 0x0
+#elif (GIC_VERSION == GICV4)
+    #define GICR_VFRAME_SIZE 0x20000
+#else
+    #error "unknown GIV version " GIC_VERSION
+#endif
+
+
 struct gicr_hw {
     /* RD_base frame */
     uint32_t CTLR;
@@ -228,6 +238,7 @@ struct gicr_hw {
     uint8_t pad16[0x0e00 - 0xd04];
     uint32_t NSACR;
 
+    #if (GIC_VERSION == GICV4)
     /* VLPI_base frame - only if gicv4 available*/
     uint8_t vlpi_base[0] __attribute__((aligned(0x10000)));
     uint8_t pad17[0x70 - 0x00];
@@ -238,6 +249,7 @@ struct gicr_hw {
     /* Reserved_base frame - only if gicv4 available*/
     uint8_t reserved_base[0] __attribute__((aligned(0x10000)));
     uint8_t pad19[0x10000];
+    #endif
 } __attribute__((__packed__, aligned(0x10000)));
 
 /* CPU Interface Control Register, GICC_CTLR */
@@ -503,11 +515,20 @@ void its_encode_event_id(struct its_cmd *cmd, uint32_t event_id);
 void its_encode_db_id(struct its_cmd *cmd, uint32_t db_id);
 void its_encode_virt_id(struct its_cmd *cmd, uint32_t virt_id);
 
+#if (GIC_VERSION == GICV4)
+void its_translate_vcmd(struct its_cmd *dest_cmd,
+                    struct its_cmd *src_cmd);
+#elif (GIC_VERSION == GICv3)
+void its_translate_cmd(struct its_cmd *dest_cmd,
+                    struct its_cmd *src_cmd);
+#endif
+
+
 extern volatile struct gicd_hw* gicd;
 extern volatile struct gicr_hw* gicr;
+extern spinlock_t gicr_lock;
 
 
-//#if (GIC_VERSION == GICV3)
     /*----------- GIC ITS -----------*/
 
     // Define only to GICv3
@@ -516,6 +537,13 @@ extern volatile struct gicr_hw* gicr;
     #define GIC_MAX_TTD               8     //max translation table descriptors
 
     #define GITS_TYPER_VIRT_MSK             (1ULL << 1)
+
+    #define GITS_TYPER_CID_OFF              (32)
+    #define GITS_TYPER_CID_LEN              (4)
+    #define GITS_TYPER_CID_MSK              (BIT_MASK(GITS_TYPER_CID_OFF, GITS_TYPER_CID_LEN))
+    #define GITS_TYPER_CIL_BIT              (1ULL << 36)
+
+    
 
     #define GITS_CBASER_RaWaWb              (7ULL << 59)
     #define GITS_CBASER_InnerShareable      (1ULL << 10)
@@ -550,6 +578,12 @@ extern volatile struct gicr_hw* gicr;
     #define GITS_BASER_VAL_BIT                   (1ULL << 63)
 
     #define GIC_HAS_VLPI(gits)		(!!((gits)->TYPER & GITS_TYPER_VIRT_MSK))
+
+    #define GITS_BASER_COLLT_TYPE           (0x4)
+    #define GITS_BASER_VPET_TYPE            (0x2)
+
+
+
     /*
     * ITS command descriptors - parameters to be encoded in a command
     * block.
@@ -596,6 +630,10 @@ extern volatile struct gicr_hw* gicr;
 
             struct {
                 uint16_t vpe_id;
+            } its_vsync_cmd;
+
+            struct {
+                uint16_t vpe_id;
                 uint32_t device_id;
                 uint32_t virt_id;
                 uint32_t event_id;
@@ -631,6 +669,9 @@ extern volatile struct gicr_hw* gicr;
 
 
     #define ITS_CMD_QUEUE_N_PAGE     16
+    #define ITS_COLL_BITS_MAX        16
+
+
 
     /* ITS defines */
     #define ITS_MAPC_CMD            (0x09)     

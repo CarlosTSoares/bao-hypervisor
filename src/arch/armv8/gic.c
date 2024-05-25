@@ -9,8 +9,11 @@
 #include <arch/gicv2.h>
 #elif (GIC_VERSION == GICV3)
 #include <arch/gicv3.h>
+#elif (GIC_VERSION == GICV4)
+#include <arch/gicv3.h>
+#include <arch/gicv4.h>
 #else
-#error "unknown GIV version " GIC_VERSION
+#error "unknown GIC version " GIC_VERSION
 #endif
 
 #include <interrupts.h>
@@ -80,7 +83,7 @@ bool gicd_supports_LPIs(){
 
 void gic_init()
 {
-    if (GIC_VERSION == GICV3) {
+    if (GIC_VERSION == GICV3 || GIC_VERSION == GICV4) {
         sysreg_icc_sre_el2_write(ICC_SRE_SRE_BIT | ICC_SRE_ENB_BIT);    //Enable the system register interface and enable el1 access to icc_sre_el1
         ISB();
     }
@@ -101,29 +104,6 @@ void gic_init()
     cpu_sync_and_clear_msgs(&cpu_glb_sync);
 
     gic_cpu_init();
-
-    //console_printk("[BAO] Value of propbaser affinity is 0x%x\n",(gicr[cpu()->id].TYPER >> 24) & 0x3);
-
-    //if gicv3
-    // if(gicd_supports_LPIs() && cpu()->id == CPU_MASTER)
-    // {
-    //     console_printk("[BAO] Support LPIs in distributor\n");
-    //     //disable redist LPIs
-    //     for(cpuid_t cpu_id = 0; cpu_id < PLAT_CPU_NUM;cpu_id++)
-    //         disable_gicr_lpis(cpu_id); // all redistributor have the same propbaser
-
-    //     //allocate proptable
-    //     bool err = gic_alloc_lpi_tables();
-    //     if(err)
-    //         ERROR("Can't allocate the LPI tables\n");
-
-        
-    //     gic_cpu_init_lpis();
-        
-    //     //enable redist LPIs
-    //     //enable_gicr_lpis();
-    // }
-
 
 }
 

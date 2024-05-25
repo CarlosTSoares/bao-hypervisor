@@ -11,6 +11,10 @@
 #elif (GIC_VERSION == GICV3)
 #include <arch/gicv3.h>
 #include <arch/vgicv3.h>
+#elif (GIC_VERSION == GICV4)
+#include <arch/gicv3.h>
+#include <arch/vgicv3.h>
+#include <arch/gicv4.h>
 #else
 #error "unknown GIV version " GIC_VERSION
 #endif

@@ -308,10 +308,11 @@ void vgicr_emul_propbaser_access(struct emul_access* acc, struct vgic_reg_handle
             
             cpu()->vcpu->arch.vgic_priv.vgicr.PROPBASER = tmp_propbaser;
 
-            if(GIC_HAS_VLPI(gits))
+            #if (GIC_VERSION == GICV4)
                 gicr_set_vpropbaser(pgicr_id,proptable_pa,id_bits);
-            else
+            #else
                 gicr_set_propbaser(pgicr_id,proptable_pa,id_bits);
+            #endif
             
 
             console_printk("VGIC3: Propbaser write from cpu %d -> 0x%x\n",cpu()->id,gicr[pgicr_id].PROPBASER);
@@ -355,10 +356,11 @@ void vgicr_emul_pendbaser_access(struct emul_access* acc, struct vgic_reg_handle
             //             (tmp & ~GICR_PENDBASER_PHY_ADDR_MSK);
             cpu()->vcpu->arch.vgic_priv.vgicr.PENDBASER = tmp;
 
-            if(GIC_HAS_VLPI(gits))
+            #if (GIC_VERSION == GICV4)
                 gicr_set_vpendbaser(pgicr_id,pend_pa);
-            else
+            #else
                 gicr_set_pendbaser(pgicr_id,pend_pa);
+            #endif    
         }
     }
 }
@@ -662,8 +664,6 @@ void its_build_vmapp(struct its_cmd *curr_cmd,
         "2- 0x%lx\n"    
         "3- 0x%lx\n"    
         "4- 0x%lx\n\n",cpu()->id,curr_cmd->cmd[0],curr_cmd->cmd[1],curr_cmd->cmd[2],curr_cmd->cmd[3]);
-
-
 }
 
 void its_build_vsync(struct its_cmd* curr_cmd, 
@@ -671,7 +671,7 @@ void its_build_vsync(struct its_cmd* curr_cmd,
 {
     its_clear_cmd(curr_cmd);
     its_encode_cmd(curr_cmd,ITS_VSYNC_CMD);
-    its_encode_vpe_id(curr_cmd,desc->its_vmovi_cmd.vpe_id);
+    its_encode_vpe_id(curr_cmd,desc->its_vsync_cmd.vpe_id);
 }
 
 void its_build_vinvall(struct its_cmd* curr_cmd, 
@@ -716,6 +716,8 @@ void its_translate_cmd(struct its_cmd *dest_cmd,
 {
     vcpuid_t vrdbase;
     cpuid_t pgicr_id;
+
+    //TODO LOCK mechanism
     struct its_cmd_desc desc;
 
     switch (GITS_CMD_MASK(src_cmd)) {
@@ -760,7 +762,7 @@ void its_translate_cmd(struct its_cmd *dest_cmd,
     }
 }
 
-void its_translate_cmdv4(struct its_cmd *dest_cmd,
+void its_translate_vcmd(struct its_cmd *dest_cmd,
                     struct its_cmd *src_cmd)
 {
     vcpuid_t vrdbase;
@@ -780,7 +782,7 @@ void its_translate_cmdv4(struct its_cmd *dest_cmd,
             console_printk("[BAO-VGICV3] Pendbaser phy is 0x%lx\n",pa_vpt);
 
             //with some VM requires other logic
-            desc.its_vmapp_cmd.vpe_id = bit64_extract(src_cmd->cmd[2],0,12);   //See imple defined sizes
+            desc.its_vmapp_cmd.vpe_id = bit64_extract(src_cmd->cmd[2],0,16);   //See imple defined sizes
             desc.its_vmapp_cmd.target = pgicr_id;
             desc.its_vmapp_cmd.vpt_addr = pa_vpt;   //review
             desc.its_vmapp_cmd.vpt_size = bit64_extract(src_cmd->cmd[3],0,5);
@@ -792,7 +794,7 @@ void its_translate_cmdv4(struct its_cmd *dest_cmd,
             break;
         case ITS_INVALL_CMD:
             // TODO - vpe_id receives the same value as the collection
-            desc.its_vinvall_cmd.vpe_id = 0; //store the vpe info
+            desc.its_vinvall_cmd.vpe_id = bit64_extract(src_cmd->cmd[2],0,16); //store the vpe info
             its_build_vinvall(dest_cmd,&desc);
             console_printk("BAO-VGICV3: INVALL cmd received\n");
             break;
@@ -800,14 +802,14 @@ void its_translate_cmdv4(struct its_cmd *dest_cmd,
             desc.its_vmapti_cmd.device_id = bit64_extract(src_cmd->cmd[0],32,32);
             desc.its_vmapti_cmd.event_id = bit64_extract(src_cmd->cmd[1],0,32);
             desc.its_vmapti_cmd.virt_id = bit64_extract(src_cmd->cmd[1],32,32);
-            desc.its_vmapti_cmd.vpe_id = 0; //store the vpe info
-            desc.its_vmapti_cmd.db_id = 8192;
+            desc.its_vmapti_cmd.vpe_id = bit64_extract(src_cmd->cmd[2],0,16); //store the vpe info
+            desc.its_vmapti_cmd.db_id = desc.its_vmapti_cmd.virt_id;
 
             its_build_vmapti(dest_cmd,&desc);
             console_printk("BAO-VGICV3: MAPTI cmd received\n");
             break;
         case ITS_SYNC_CMD:
-            desc.its_vmovi_cmd.vpe_id = 0; //store the vpe info
+            desc.its_vsync_cmd.vpe_id = 0; //store the vpe info
             its_build_vsync(dest_cmd,&desc);
             console_printk("BAO-VGICV3: SYNC cmd received\n");
             break;
@@ -864,10 +866,11 @@ void vgits_emul_cwriter_access(struct emul_access* acc, struct vgic_reg_handler_
         
         while(n_cmd-- > 0)
         {
-            if(GIC_HAS_VLPI(gits))
-                its_translate_cmdv4(its_cmd,vm_cmd);
-            else
+            #if (GIC_VERSION == GICV4)
+                its_translate_vcmd(its_cmd,vm_cmd);
+            #else
                 its_translate_cmd(its_cmd,vm_cmd);
+            #endif
             vm_cmd++;
             its_cmd++;
         }
@@ -1151,8 +1154,9 @@ void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp)
     /*GIC version of cpu interface*/
 
     //This must be modified, in gicv4 only the first 2 frames can be emulated.
+    console_printk("Size is 0x%x and %d and version is %d\n",sizeof(struct gicr_hw),GICR_VFRAME_SIZE, GIC_VERSION);
     vm->arch.vgicr_emul = (struct emul_mem){ .va_base = vgic_dscrp->gicr_addr,
-        .size = ALIGN(sizeof(struct gicr_hw), PAGE_SIZE) * vm->cpu_num,
+        .size = ALIGN(sizeof(struct gicr_hw) - GICR_VFRAME_SIZE, PAGE_SIZE) * vm->cpu_num,
         .handler = vgicr_emul_handler };
     vm_emul_add_mem(vm, &vm->arch.vgicr_emul);
 
@@ -1160,7 +1164,7 @@ void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp)
     if(vm->msi){
         for (size_t index = 0; index < GIC_MAX_TTD; index++) {
             //TODO -  Verify if flat tables are supported and manage Indirect bit
-            if(bit64_extract(gits->BASER[index], GITS_BASER_TYPE_OFF, GITS_BASER_TYPE_LEN) == 0x2)
+            if(bit64_extract(gits->BASER[index], GITS_BASER_TYPE_OFF, GITS_BASER_TYPE_LEN) == GITS_BASER_VPET_TYPE)
             {
                 console_printk("[BAO-VGICV3] VPE table found\n");
                 vm->arch.vgits.BASER[index]= 0;
