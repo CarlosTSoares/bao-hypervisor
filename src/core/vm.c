@@ -46,6 +46,7 @@ void vm_vcpu_init(struct vm* vm, const struct vm_config* config)
 
     vcpu->id = vcpu_id;
     vcpu->phys_id = cpu()->id;
+    console_printk("Vcpu %d intialized (cpu %d)\n",vcpu->id,cpu()->id);
     vcpu->vm = vm;
     cpu()->vcpu = vcpu;
 

@@ -16,8 +16,19 @@
 #define GICR_IS_REG(REG, offset)                    \
     (((offset) >= offsetof(struct gicr_hw, REG)) && \
         (offset) < (offsetof(struct gicr_hw, REG) + sizeof(gicr[0].REG)))
+
+
 #define GICR_REG_OFF(REG)   (offsetof(struct gicr_hw, REG) & 0x1ffff)
-#define GICR_REG_MASK(ADDR) ((ADDR) & 0x1ffff)
+
+#if (GIC_VERSION == GICV3)
+    #define GICR_REG_MASK(ADDR) ((ADDR) & 0x1ffff)
+#elif (GIC_VERSION == GICV4)
+    #define GICR_REG_MASK(ADDR) (((ADDR) & 0xffff) | ((ADDR & 0x30000)^0x20000))
+#else
+    #error "unknown GIV version " GIC_VERSION
+#endif
+
+
 #define GICD_REG_MASK(ADDR) ((ADDR) & (GIC_VERSION == GICV2 ? 0xfffUL : 0xffffUL))
 
 
@@ -217,7 +228,8 @@ bool proptable_emul_handler(struct emul_access* acc){
 void vgicr_emul_propbaser_access(struct emul_access* acc, struct vgic_reg_handler_info* handlers,
     bool gicr_access, vcpuid_t vgicr_id) 
 {
-    struct vm *vm = cpu()->vcpu->vm;
+    struct vcpu *target_vcpu = vm_get_vcpu(cpu()->vcpu->vm, vgicr_id);
+    struct vm *vm = target_vcpu->vm;
 
     if (!acc->write) {
         
@@ -238,8 +250,6 @@ void vgicr_emul_propbaser_access(struct emul_access* acc, struct vgic_reg_handle
         
         if((pgicr_id != INVALID_CPUID) && vm->msi && !gicr_get_en_lpis(pgicr_id))
         {
-            console_printk("Redistributor vID is %d and pID is %d\n",vgicr_id,pgicr_id);
-
             //translate to physical
             uint64_t tmp_propbaser = vcpu_readreg(cpu()->vcpu, acc->reg);
             paddr_t proptable_pa = 0;
@@ -248,32 +258,45 @@ void vgicr_emul_propbaser_access(struct emul_access* acc, struct vgic_reg_handle
             size_t id_bits = tmp_propbaser & GICR_PROPBASER_ID_BITS_MSK;
             size_t proptable_size = GICR_PROPTABLE_SZ(id_bits);
 
-            console_printk("[BAO-VGICV3] Proptable size is 0x%x\n",proptable_size);
-            console_printk("[BAO-VGICV3] Propbaser virtual is 0x%lx\n",proptable_vaddr);
             mem_guest_ipa_translate(proptable_vaddr,&proptable_pa);
-            console_printk("[BAO-VGICV3] Propbaser phy is 0x%lx\n",proptable_pa);
+
 
             if(vm->arch.prop_tab.proptab_base == NULL) {
+                console_printk("[BAO-VGICV3] First allocation of Proptable from cpu %d\n",cpu()->id);
 
                 vm->arch.prop_tab.proptab_size = proptable_size;
                 vm->arch.prop_tab.proptab_base = (uint8_t *)mem_alloc_map_dev(&cpu()->as, SEC_HYP_VM, INVALID_VA,
                 proptable_pa,NUM_PAGES(vm->arch.prop_tab.proptab_size));
 
+                console_printk("Here 1 and vm id is %d\n",vm->id);
+                console_printk("Proptable vaddr is 0x%lx and pages %d\n",(vaddr_t)proptable_vaddr,NUM_PAGES(vm->arch.prop_tab.proptab_size));
+
                 //Change the proptable to RO in VM space
+                //spin_lock(&vm->lock);
+                console_printk("AS has the id%d and type%d\n",vm->as.id,vm->as.type);
                 mem_unmap(&vm->as,(vaddr_t)proptable_vaddr,NUM_PAGES(vm->arch.prop_tab.proptab_size),true);
+                console_printk("Here 1.2\n");
                 mem_alloc_map_flags(&vm->as,SEC_VM_ANY,(vaddr_t)proptable_vaddr,proptable_pa,
                     NUM_PAGES(vm->arch.prop_tab.proptab_size),PTE_VM_FLAGS_RO);
 
+                console_printk("Here 2\n");
+
                 //Create emul memory
                 vm->arch.proptable_emul = (struct emul_mem){ .va_base = (vaddr_t)proptable_vaddr,
-                    .size = ALIGN(vm->arch.prop_tab.proptab_size, PAGE_SIZE), //???
+                    .size = ALIGN(vm->arch.prop_tab.proptab_size, PAGE_SIZE),
                     .handler = proptable_emul_handler };
                 vm_emul_add_mem(vm, &vm->arch.proptable_emul);
 
+                console_printk("Here 3\n");
+
+
                 vm->arch.prop_tab.vm_proptable_vaddr = (vaddr_t)proptable_vaddr;
+                //spin_unlock(&vm->lock);
             } else {
+                console_printk("[BAO-VGICV3] Second allocation of Proptable from cpu %d\n",cpu()->id);
 
                 if((vaddr_t)proptable_vaddr != vm->arch.prop_tab.vm_proptable_vaddr) {
+                    console_printk("[BAO-VGICV3] Modification done\n");
                     //unmap and map as RW the proptable current region in VM space
 
                     mem_unmap(&vm->as,vm->arch.prop_tab.vm_proptable_vaddr,vm->arch.prop_tab.proptab_size,true);
@@ -303,10 +326,16 @@ void vgicr_emul_propbaser_access(struct emul_access* acc, struct vgic_reg_handle
                     vm_emul_add_mem(vm, &vm->arch.proptable_emul);
 
                     vm->arch.prop_tab.vm_proptable_vaddr = (vaddr_t)proptable_vaddr;
+                } else {
+                    console_printk("[BAO-VGICV3] Modification not done\n");
                 }
             }
+
+            console_printk("Final here\n");
+
             
-            cpu()->vcpu->arch.vgic_priv.vgicr.PROPBASER = tmp_propbaser;
+            target_vcpu->arch.vgic_priv.vgicr.PROPBASER = tmp_propbaser;
+            
 
             #if (GIC_VERSION == GICV4)
                 gicr_set_vpropbaser(pgicr_id,proptable_pa,id_bits);
@@ -354,7 +383,8 @@ void vgicr_emul_pendbaser_access(struct emul_access* acc, struct vgic_reg_handle
 
             // uint64_t pendbaser_paddr = pend_pa |
             //             (tmp & ~GICR_PENDBASER_PHY_ADDR_MSK);
-            cpu()->vcpu->arch.vgic_priv.vgicr.PENDBASER = tmp;
+            struct vcpu *target_vcpu = vm_get_vcpu(cpu()->vcpu->vm, vgicr_id);
+            target_vcpu->arch.vgic_priv.vgicr.PENDBASER = tmp;
 
             #if (GIC_VERSION == GICV4)
                 gicr_set_vpendbaser(pgicr_id,pend_pa);
@@ -417,6 +447,8 @@ static inline vcpuid_t vgicr_get_id(struct emul_access* acc)
 bool vgicr_emul_handler(struct emul_access* acc)
 {
     struct vgic_reg_handler_info* handler_info = NULL;
+    console_printk("Access to rdestributor with addr 0x%lx by vcpu %d -> cpu %d\n",acc->addr, vgicr_get_id(acc),cpu()->id);
+
     switch (GICR_REG_MASK(acc->addr)) {
         case GICR_REG_OFF(CTLR):
             handler_info = &vgicr_ctrl_info;
@@ -445,19 +477,24 @@ bool vgicr_emul_handler(struct emul_access* acc)
             break;
         case GICR_REG_OFF(PROPBASER):
             handler_info = &vgicr_propbaser_info;
-            //console_printk("[BAO] Address 0x%x access the propbaser handler\n",acc->addr);
             break;
         case GICR_REG_OFF(PENDBASER):
             handler_info = &vgicr_pendbaser_info;
             break;
         default: {
-            size_t base_offset = acc->addr - cpu()->vcpu->vm->arch.vgicr_addr;
-            size_t acc_offset = GICR_REG_MASK(base_offset);
+            #if (GIC_VERSION == GICV3)
+                size_t base_offset = acc->addr - cpu()->vcpu->vm->arch.vgicr_addr;
+                size_t acc_offset = GICR_REG_MASK(base_offset);
+            #elif (GIC_VERSION == GICV4)
+                size_t acc_offset = GICR_REG_MASK(acc->addr);
+            #endif
+            console_printk("Base offset is 0x%x\n",acc_offset);
             if (GICR_IS_REG(TYPER, acc_offset)) {
                 handler_info = &vgicr_typer_info;
             } else if (GICR_IS_REG(IPRIORITYR, acc_offset)) {
                 handler_info = &ipriorityr_info;
             } else if (GICR_IS_REG(ID, acc_offset)) {
+                console_printk("Inside ID\n");
                 handler_info = &vgicr_pidr_info;
             } else {
                 handler_info = &razwi_info;
@@ -540,8 +577,6 @@ void vgits_emul_cbaser_access(struct emul_access* acc, struct vgic_reg_handler_i
 
         mem_guest_ipa_translate(cbaser_vaddr,&cmdq_pa);
 
-        spin_lock(&vm->arch.vgits.lock);
-
         //Unmap from the Bao space
         if(vm->arch.vgits.vgits_cmdq.base_cmdq != NULL) {
             //unmap
@@ -556,8 +591,6 @@ void vgits_emul_cbaser_access(struct emul_access* acc, struct vgic_reg_handler_i
 
         vm->arch.vgits.vgits_cmdq.page_size = pages;
         vm->arch.vgits.CBASER = tmp_cbaser;
-
-        spin_unlock(&vm->arch.vgits.lock);
 
         console_printk("[BAO-VGICV3] CBASER write from addr 0x%x\n",acc->addr);
     }
@@ -841,7 +874,7 @@ void its_translate_vcmd(struct its_cmd *dest_cmd,
 }
 
 void vgits_emul_cwriter_access(struct emul_access* acc, struct vgic_reg_handler_info* handlers,
-    bool gicr_access, vcpuid_t vgicr_id) 
+    bool gicr_access, vcpuid_t vgicr_id)
 {
     uint64_t prev_cwriter, curr_cwriter, cmd_off;
     size_t n_cmd;
@@ -1013,6 +1046,7 @@ struct vgic_reg_handler_info vgits_iidr_access = {
 bool vgits_emul_handler(struct emul_access* acc){
 
     struct vgic_reg_handler_info* handler_info = NULL;
+    struct vm *vm = cpu()->vcpu->vm;
 
      switch (GITS_REG_MASK(acc->addr)) {
         case GITS_REG_OFF(CTLR):
@@ -1055,16 +1089,14 @@ bool vgits_emul_handler(struct emul_access* acc){
     }
 
     if (vgic_check_reg_alignment(acc, handler_info)) {
-        //spin_lock(&gits_lock);
+        spin_lock(&vm->arch.vgits.lock);
             handler_info->reg_access(acc, handler_info, false, 0);
-        //spin_unlock(&gits_lock);
+        spin_unlock(&vm->arch.vgits.lock);
 
         return true;
     } else {
         return false;
     }
-    
-    return true;
 }
 
 bool vgic_icc_sgir_handler(struct emul_access* acc)
@@ -1156,9 +1188,10 @@ void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp)
     //This must be modified, in gicv4 only the first 2 frames can be emulated.
     console_printk("Size is 0x%x and %d and version is %d\n",sizeof(struct gicr_hw),GICR_VFRAME_SIZE, GIC_VERSION);
     vm->arch.vgicr_emul = (struct emul_mem){ .va_base = vgic_dscrp->gicr_addr,
-        .size = ALIGN(sizeof(struct gicr_hw) - GICR_VFRAME_SIZE, PAGE_SIZE) * vm->cpu_num,
+        .size = ALIGN(sizeof(struct gicr_hw), PAGE_SIZE) * vm->cpu_num,
         .handler = vgicr_emul_handler };
     vm_emul_add_mem(vm, &vm->arch.vgicr_emul);
+    console_printk("SIZE is %d\n\n",vm->arch.vgicr_emul.size);
 
     /*ITS emul */
     if(vm->msi){

@@ -797,7 +797,7 @@ struct vgic_reg_handler_info vgicd_pidr_info = {
 
 struct vgic_reg_handler_info razwi_info = {
     vgic_emul_razwi,
-    0b0100,
+    0b1100,
 };
 
 __attribute__((weak)) struct vgic_reg_handler_info itargetr_info = {

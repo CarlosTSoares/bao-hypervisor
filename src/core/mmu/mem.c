@@ -422,6 +422,8 @@ void mem_unmap(struct addr_space* as, vaddr_t at, size_t num_pages, bool free_pp
     if (sec->shared) {
         spin_lock(&sec->lock);
     }
+    console_printk("Unmap memory\n");
+    console_printk("Pt is 0x%lx and vaddr is 0x%lx \n",as->pt,vaddr);
     while (vaddr < top) {
         pte_t* pte = pt_get_pte(&as->pt, lvl, vaddr);
         if (pte == NULL) {
@@ -471,6 +473,8 @@ void mem_unmap(struct addr_space* as, vaddr_t at, size_t num_pages, bool free_pp
              */
         }
     }
+
+    console_printk("Finall\n");
 
     if (sec->shared) {
         spin_unlock(&sec->lock);
