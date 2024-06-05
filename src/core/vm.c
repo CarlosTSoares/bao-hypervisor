@@ -236,6 +236,7 @@ static void vm_init_dev(struct vm* vm, const struct vm_config* config)
 
     //if IOMMU is supported
     if (io_vm_init(vm, config)) {
+        console_printk("[BAO-VM] ");
         for (size_t i = 0; i < config->platform.dev_num; i++) {
             struct vm_dev_region* dev = &config->platform.devs[i];
             if (dev->id) {

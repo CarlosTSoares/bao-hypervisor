@@ -30,6 +30,9 @@ struct platform platform = {
             .gits_addr = 0x08080000,
             .maintenance_id = 25,
         },
+        .smmu = {
+            .base = 0x09050000
+        },
     },
 
 };

@@ -373,6 +373,9 @@ typedef deviceid_t streamid_t;
 
 void smmu_init();
 
+// bool smmu_alloc_ste(streamid_t sid);
+// void smmu_write_ste(streamid_t sid, struct vm* vm, paddr_t root_pt);
+
 ssize_t smmu_alloc_ctxbnk();
 ssize_t smmu_alloc_sme();
 void smmu_write_ctxbnk(size_t ctx_id, paddr_t root_pt, asid_t vm_id);

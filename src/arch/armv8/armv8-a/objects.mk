@@ -8,6 +8,8 @@ cpu-objs-y+=$(ARCH_PROFILE)/vm.o
 cpu-objs-y+=$(ARCH_PROFILE)/vmm.o
 cpu-objs-y+=$(ARCH_PROFILE)/psci.o
 cpu-objs-y+=$(ARCH_PROFILE)/smmuv2.o
+cpu-objs-y+=$(ARCH_PROFILE)/smmuv3.o
 cpu-objs-y+=$(ARCH_PROFILE)/iommu.o
 cpu-objs-y+=$(ARCH_PROFILE)/cpu.o
 cpu-objs-y+=$(ARCH_PROFILE)/smc.o
+
