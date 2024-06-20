@@ -95,7 +95,7 @@ void vcpu_arch_run(struct vcpu* vcpu)
     }
 }
 
-void vm_assign_lpi_interrupt(struct vm* vm, irqid_t int_id)
-{
-    bitmap_set(vm->arch.lpis_interrupt_bitmap, int_id-8192);
-}
+// void vm_assign_lpi_interrupt(struct vm* vm, irqid_t int_id)
+// {
+//     bitmap_set(vm->arch.lpis_interrupt_bitmap, int_id-8192);
+// }

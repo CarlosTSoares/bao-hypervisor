@@ -536,6 +536,8 @@ extern spinlock_t gicr_lock;
 
     #define GIC_MAX_TTD               8     //max translation table descriptors
 
+    #define GITS_TYPER_PHY_OFF              (0)
+    #define GITS_TYPER_VIRT_OFF             (1)
     #define GITS_TYPER_VIRT_MSK             (1ULL << 1)
 
     #define GITS_TYPER_CID_OFF              (32)

@@ -74,7 +74,7 @@ enum irq_res interrupts_handle(irqid_t int_id)
 
         return FORWARD_TO_VM;
 
-    } else if (vm_has_msi_interrupt(cpu()->vcpu->vm, int_id)){
+    } else if (int_id >= GIC_FIRST_LPIS && int_id <= GIC_MAX_LPIS){
         vcpu_inject_msi_irq(cpu()->vcpu, int_id);
 
         return FORWARD_TO_VM;

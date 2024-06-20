@@ -93,6 +93,8 @@ void gic_init()
         gicd_init();
         NUM_LRS = gich_num_lrs();
 
+        console_printk("Version of cpu interface is 0x%x\n",sysreg_id_aa64pfr0_el1_read());
+
         if(gicd_supports_LPIs()) //don't need gic version condition
         {
             console_printk("[BAO] LPI supported\n");

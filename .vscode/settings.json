@@ -11,6 +11,11 @@
         "vm.h": "c",
         "type_traits": "c",
         "gicv3.h": "c",
-        "gicv2.h": "c"
+        "gicv2.h": "c",
+        "spinlock.h": "c",
+        "console.h": "c",
+        "platform.h": "c",
+        "platform_defs.h": "c",
+        "nxp_uart.h": "c"
     }
 }

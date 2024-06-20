@@ -50,8 +50,6 @@ struct vm_arch {
     struct emul_mem vgits_emul;
     struct vgits vgits;
     struct proptable prop_tab;
-    struct emul_mem proptable_emul;
-    BITMAP_ALLOC(lpis_interrupt_bitmap, GIC_N_LPIS);
 };
 
 struct vcpu_arch {

@@ -60,6 +60,8 @@ long int standard_service_call(unsigned long _fn_num)
     unsigned long x2 = vcpu_readreg(cpu()->vcpu, 2);
     unsigned long x3 = vcpu_readreg(cpu()->vcpu, 3);
 
+    console_printk("Standard_service_call\n");
+
     if (is_psci_fid(smc_fid)) {
         ret = psci_smc_handler(smc_fid, x1, x2, x3);
     } else {
@@ -175,6 +177,8 @@ void aborts_sync_handler()
         ipa_fault_addr = far;
     }
 
+    //console_printk("Sync handler 0x%lx\n",ipa_fault_addr);
+
     unsigned long ec = bit64_extract(esr, ESR_EC_OFF, ESR_EC_LEN);
     unsigned long il = bit64_extract(esr, ESR_IL_OFF, ESR_IL_LEN);
     unsigned long iss = bit64_extract(esr, ESR_ISS_OFF, ESR_ISS_LEN);
@@ -182,7 +186,6 @@ void aborts_sync_handler()
 
     abort_handler_t handler = abort_handlers[ec];
     if (handler) {
-        //console_printk("[BAO] iss2 value is 0x%x\n",iss2);
         handler(iss, ipa_fault_addr, il, ec);
     } else {
         ERROR("no handler for abort ec = 0x%x", ec); // unknown guest exception
