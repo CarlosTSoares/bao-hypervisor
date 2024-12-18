@@ -384,7 +384,9 @@ static inline void gic_alloc_cmd_queue(){
                     (ITS_CMD_QUEUE_N_PAGE - 1) |
                     GITS_CBASER_VALID;
     
-    gits_set_cbaser(cbaser);
+    gits_set_cbaser(cbaser);    //I cannot set cbaser if the its is not available
+
+
 }
 
 static inline void gic_alloc_coll_table(){
@@ -421,16 +423,19 @@ void gic_alloc_vpe_table(){
             console_printk("[BAO-GICV3] VPE table found is 0x%lx\n",gits->BASER[index]);
             gits_set_baser(pages.base,index);
             gits_set_baser_val(index);
-            console_printk("[BAO-GICV3] VPE table found is 0x%lx\n",gits->BASER[index]);
+            //continue;
         }
     }
 }
 
-
 void its_init()
 {
+
     gic_alloc_cmd_queue();
-    gic_alloc_coll_table();
+    gic_alloc_coll_table(); //Only required by GICv3
+
+    // #if (GIC_VERSION == GICV3)
+    // gic_alloc_coll_table(); //Only required by GICv3
 
     #if (GIC_VERSION == GICV4)
         if(GIC_HAS_VLPI(gits)){

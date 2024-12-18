@@ -39,6 +39,7 @@ struct vm_pcie_region {
     paddr_t pa;
     vaddr_t va;
     size_t size;
+    deviceid_t id; /* bus master id for iommu effects */
     bool cfg_space;
 };
 

@@ -233,7 +233,6 @@ static inline void vgic_write_lr(struct vcpu* vcpu, struct vgic_int* interrupt, 
 #endif
     else {
         if (!gic_is_priv(interrupt->id) && !vgic_int_is_hw(interrupt)) {
-            console_printk("[BAO-VGICV3] Enable EOI bit\n");
             lr |= GICH_LR_EOI_BIT;
         }
 
@@ -437,7 +436,6 @@ void vgicd_emul_pidr_access(struct emul_access* acc, struct vgic_reg_handler_inf
 {
     if (!acc->write) {
         //vcpu_writereg(cpu()->vcpu, acc->reg, gicd->ID[((acc->addr & 0xff) - 0xd0) / 4]);
-        console_printk("--------- GICD PIDR is 0x%x\n",gicd->ID[((acc->addr & 0xff) - 0xd0) / 4]);
         vcpu_writereg(cpu()->vcpu, acc->reg, 0x3b);
     }
 }
@@ -841,7 +839,6 @@ struct vgic_reg_handler_info* vgic_get_reg_handler_info(enum vgic_reg_handler_in
 bool vgic_check_reg_alignment(struct emul_access* acc, struct vgic_reg_handler_info* handlers)
 {
     if ((!(handlers->alignment & acc->width) || ((acc->addr & (acc->width - 1)) != 0))) {
-        console_printk("VGIC: In addr 0x%x, algin=0x%x, width=0x%x, write=%d\n",acc->addr,handlers->alignment,acc->width,acc->write);
         return false;
     } else {
         return true;
@@ -1068,7 +1065,6 @@ void vgic_handle_trapped_eoir(struct vcpu* vcpu)
     uint64_t eisr = gich_get_eisr();
     int64_t lr_ind = bit64_ffs(eisr & BIT64_MASK(0, NUM_LRS));
 
-    console_printk("[BAO] EOIR of LPI done with LR=%d\n",lr_ind);
     while (lr_ind >= 0) {
         unsigned long lr_val = gich_read_lr(lr_ind);
         gich_write_lr(lr_ind, 0);
@@ -1099,9 +1095,7 @@ void vgic_handle_trapped_eoir(struct vcpu* vcpu)
 }
 
 void gic_maintenance_handler(irqid_t irq_id)
-{
-    console_printk("[Bao] Inside maintenance handler with irq_id = %d\n",irq_id);
-    
+{    
     uint32_t misr = gich_get_misr();
 
     if (misr & GICH_MISR_EOI) {

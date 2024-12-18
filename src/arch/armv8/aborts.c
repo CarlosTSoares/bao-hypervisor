@@ -60,7 +60,6 @@ long int standard_service_call(unsigned long _fn_num)
     unsigned long x2 = vcpu_readreg(cpu()->vcpu, 2);
     unsigned long x3 = vcpu_readreg(cpu()->vcpu, 3);
 
-    console_printk("Standard_service_call\n");
 
     if (is_psci_fid(smc_fid)) {
         ret = psci_smc_handler(smc_fid, x1, x2, x3);
@@ -177,12 +176,15 @@ void aborts_sync_handler()
         ipa_fault_addr = far;
     }
 
-    //console_printk("Sync handler 0x%lx\n",ipa_fault_addr);
 
     unsigned long ec = bit64_extract(esr, ESR_EC_OFF, ESR_EC_LEN);
     unsigned long il = bit64_extract(esr, ESR_IL_OFF, ESR_IL_LEN);
     unsigned long iss = bit64_extract(esr, ESR_ISS_OFF, ESR_ISS_LEN);
     //unsigned long iss2 = bit64_extract(esr, 32, 5);
+
+    
+    //console_printk("Sync handler 0x%lx and ec is 0x%x\n",ipa_fault_addr,ec);
+    //console_printk("Emul access to the addr 0x%lx with ec 0x%x\n",ipa_fault_addr,ec);
 
     abort_handler_t handler = abort_handlers[ec];
     if (handler) {

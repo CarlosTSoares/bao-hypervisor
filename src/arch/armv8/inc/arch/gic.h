@@ -645,7 +645,7 @@ extern spinlock_t gicr_lock;
         };
     };
 
-
+    //Changed the pads numbers
     struct gits_hw {
         /*ITS_CTRL_base frame*/
         uint32_t CTLR;
@@ -661,10 +661,10 @@ extern spinlock_t gicr_lock;
         uint32_t ID[(0x10000 - 0xFFD0) / sizeof(uint32_t)];
 
         /*translation_base frame - ITS_base + 0x10000*/
-        uint8_t transl_base[0] __attribute__((aligned(0x10000)));
+        /*uint8_t transl_base[0] __attribute__((aligned(0x10000)));
         uint8_t pad3[0x40 - 0x0];
         uint32_t TRANSLATER;
-        uint8_t pad4[0x10000 - 0x44];
+        uint8_t pad4[0x10000 - 0x44];*/
     } __attribute__((__packed__, aligned(0x10000)));    //64KB-aligned?
 
     extern volatile struct gits_hw* gits;

@@ -211,7 +211,21 @@ static void vm_init_pcie(struct vm* vm, const struct vm_config* config){
                 }
             }
         
-        //To-Do assign LPI interrupts
+        //Map the Translater frame of ITS to Vm space
+        size_t n = ALIGN(0x10000, PAGE_SIZE) / PAGE_SIZE;
+        mem_alloc_map_dev(&vm->as, SEC_VM_ANY, (vaddr_t)config->platform.arch.gic.gits_addr + 0x10000, platform.arch.gic.gits_addr + 0x10000, n);
+
+        //if IOMMU is supported
+        if (io_vm_init(vm, config)) {
+            for (size_t i = 0; i < config->platform.pcie_region_num; i++) {
+                struct vm_pcie_region* dev = &config->platform.pcie_regions[i];
+                if (dev->id) {
+                    if (!io_vm_add_device(vm, dev->id)) {
+                        ERROR("Failed to add device to iommu");
+                    }
+                }
+            }
+        }
 }
 
 //Map devices to VM address space and assign the interrupts
@@ -291,10 +305,12 @@ struct vm* vm_init(struct vm_allocation* vm_alloc, const struct vm_config* confi
      */
     if (master) {
         vm_init_mem_regions(vm, config);
+        vm_init_pcie(vm, config);
         vm_init_dev(vm, config);
         vm_init_ipc(vm, config);
-        vm_init_pcie(vm, config);
     }
+
+    console_printk("[BAO] Vm initializations done successfully\n");
 
     cpu_sync_and_clear_msgs(&vm->sync);
 

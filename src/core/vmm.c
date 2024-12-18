@@ -131,11 +131,12 @@ static struct vm_allocation* vmm_alloc_install_vm(vmid_t vm_id, bool master)
 void vmm_init()     //this is done for each cpu
 {
     vmm_arch_init();
-    vmm_io_init();
+    vmm_io_init(); //initalize smmu hw
     ipc_init();
 
     cpu_sync_barrier(&cpu_glb_sync);
     
+    console_printk("[BAO] VMM initializations done successfully\n");
 
     bool master = false;
     vmid_t vm_id = -1;

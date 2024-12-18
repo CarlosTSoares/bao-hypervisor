@@ -176,6 +176,8 @@ void smmu_init()
     cr0 |= SMMUV2_CR0_USFCFG | SMMUV2_CR0_SMCFCFG;
     cr0 &= ~SMMUV2_CR0_CLIENTPD;
     smmu.hw.glbl_rs0->CR0 = cr0;
+
+    console_printk("[BAO-SMMUV2] Smmuv2 initialized succesfully!\n");
 }
 
 ssize_t smmu_alloc_ctxbnk()
