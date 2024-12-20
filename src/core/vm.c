@@ -46,6 +46,7 @@ void vm_vcpu_init(struct vm* vm, const struct vm_config* config)
 
     vcpu->id = vcpu_id;
     vcpu->phys_id = cpu()->id;
+    console_printk("Vcpu %d intialized (cpu %d)\n",vcpu->id,cpu()->id);
     vcpu->vm = vm;
     cpu()->vcpu = vcpu;
 
@@ -192,6 +193,41 @@ static void vm_init_ipc(struct vm* vm, const struct vm_config* config)
     }
 }
 
+static void vm_init_pcie(struct vm* vm, const struct vm_config* config){
+
+        for (size_t i = 0; i < config->platform.pcie_region_num; i++) {
+            struct vm_pcie_region* reg = &config->platform.pcie_regions[i];
+
+            size_t n = ALIGN(reg->size, PAGE_SIZE) / PAGE_SIZE;
+
+            if (reg->va != INVALID_VA) {
+                mem_alloc_map_dev(&vm->as, SEC_VM_ANY, (vaddr_t)reg->va, reg->pa, n);
+            }
+
+        }
+        for (size_t j = 0; j < config->platform.pcie_irq_num; j++) {
+                if (!interrupts_vm_assign(vm, config->platform.pcie_irq[j])) {
+                    ERROR("Failed to assign interrupt id %d", config->platform.pcie_irq[j]);
+                }
+            }
+        
+        //Map the Translater frame of ITS to Vm space
+        size_t n = ALIGN(0x10000, PAGE_SIZE) / PAGE_SIZE;
+        mem_alloc_map_dev(&vm->as, SEC_VM_ANY, (vaddr_t)config->platform.arch.gic.gits_addr + 0x10000, platform.arch.gic.gits_addr + 0x10000, n);
+
+        //if IOMMU is supported
+        if (io_vm_init(vm, config)) {
+            for (size_t i = 0; i < config->platform.pcie_region_num; i++) {
+                struct vm_pcie_region* dev = &config->platform.pcie_regions[i];
+                if (dev->id) {
+                    if (!io_vm_add_device(vm, dev->id)) {
+                        ERROR("Failed to add device to iommu");
+                    }
+                }
+            }
+        }
+}
+
 //Map devices to VM address space and assign the interrupts
 //Add devices to IOMMU
 static void vm_init_dev(struct vm* vm, const struct vm_config* config)
@@ -269,9 +305,12 @@ struct vm* vm_init(struct vm_allocation* vm_alloc, const struct vm_config* confi
      */
     if (master) {
         vm_init_mem_regions(vm, config);
+        vm_init_pcie(vm, config);
         vm_init_dev(vm, config);
         vm_init_ipc(vm, config);
     }
+
+    console_printk("[BAO] Vm initializations done successfully\n");
 
     cpu_sync_and_clear_msgs(&vm->sync);
 
@@ -281,6 +320,11 @@ struct vm* vm_init(struct vm_allocation* vm_alloc, const struct vm_config* confi
 void vm_emul_add_mem(struct vm* vm, struct emul_mem* emu)
 {
     list_push(&vm->emul_mem_list, &emu->node);
+}
+
+void vm_emul_rm_mem(struct vm* vm, struct emul_mem* emu)
+{
+    list_rm(&vm->emul_mem_list, &emu->node);
 }
 
 void vm_emul_add_reg(struct vm* vm, struct emul_reg* emu)

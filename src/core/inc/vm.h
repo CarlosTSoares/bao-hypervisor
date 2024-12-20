@@ -35,6 +35,14 @@ struct vm_dev_region {
     deviceid_t id; /* bus master id for iommu effects */
 };
 
+struct vm_pcie_region {
+    paddr_t pa;
+    vaddr_t va;
+    size_t size;
+    deviceid_t id; /* bus master id for iommu effects */
+    bool cfg_space;
+};
+
 struct vm_platform {
     size_t cpu_num;
 
@@ -47,6 +55,14 @@ struct vm_platform {
     size_t dev_num;
     struct vm_dev_region* devs;
 
+    /* Pcie configuration */
+    size_t pcie_region_num;
+    struct vm_pcie_region* pcie_regions;
+    size_t pcie_irq_num;
+    irqid_t* pcie_irq;
+    //bool pcie_msi;   /* specify msi capability in VM*/
+
+
     // /**
     //  * In MPU-based platforms which might also support virtual memory
     //  * (i.e. aarch64 cortex-r) the hypervisor sets up the VM using an MPU by
@@ -54,6 +70,7 @@ struct vm_platform {
     //  * config mmu parameter to true;
     //  */
     bool mmu;
+
 
     struct arch_vm_platform arch;
 };
@@ -79,6 +96,9 @@ struct vm {
     struct list emul_reg_list;
 
     struct vm_io io;
+
+    //To-do: add msi here
+    bool msi;
 
     BITMAP_ALLOC(interrupt_bitmap, MAX_INTERRUPTS);
 
@@ -112,6 +132,7 @@ struct vm* vm_init(struct vm_allocation* vm_alloc, const struct vm_config* confi
     vmid_t vm_id);
 void vm_start(struct vm* vm, vaddr_t entry);
 void vm_emul_add_mem(struct vm* vm, struct emul_mem* emu);
+void vm_emul_rm_mem(struct vm* vm, struct emul_mem* emu);
 void vm_emul_add_reg(struct vm* vm, struct emul_reg* emu);
 emul_handler_t vm_emul_get_mem(struct vm* vm, vaddr_t addr);
 emul_handler_t vm_emul_get_reg(struct vm* vm, vaddr_t addr);
@@ -153,6 +174,14 @@ static inline bool vm_has_interrupt(struct vm* vm, irqid_t int_id)
     return !!bitmap_get(vm->interrupt_bitmap, int_id);
 }
 
+// static inline bool vm_has_msi_interrupt(struct vm* vm, irqid_t int_id)
+// {
+//     if(int_id >= GIC_FIRST_LPIS && int_id <= GIC_MAX_LPIS)
+//         return !!bitmap_get(vm->arch.lpis_interrupt_bitmap, int_id - GIC_FIRST_LPIS);
+//     else
+//         return 0;
+// }
+
 static inline void vcpu_inject_hw_irq(struct vcpu* vcpu, irqid_t id)
 {
     vcpu_arch_inject_hw_irq(vcpu, id);
@@ -161,6 +190,10 @@ static inline void vcpu_inject_hw_irq(struct vcpu* vcpu, irqid_t id)
 static inline void vcpu_inject_irq(struct vcpu* vcpu, irqid_t id)
 {
     vcpu_arch_inject_irq(vcpu, id);
+}
+
+static inline void vcpu_inject_msi_irq(struct vcpu* vcpu, irqid_t id){
+    vcpu_arch_inject_msi_irq(vcpu, id);
 }
 
 /* ------------------------------------------------------------*/

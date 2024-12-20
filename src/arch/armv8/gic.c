@@ -9,8 +9,11 @@
 #include <arch/gicv2.h>
 #elif (GIC_VERSION == GICV3)
 #include <arch/gicv3.h>
+#elif (GIC_VERSION == GICV4)
+#include <arch/gicv3.h>
+#include <arch/gicv4.h>
 #else
-#error "unknown GIV version " GIC_VERSION
+#error "unknown GIC version " GIC_VERSION
 #endif
 
 #include <interrupts.h>
@@ -71,9 +74,16 @@ void gicd_init()
 
 void gic_map_mmio();
 
+bool gicd_supports_LPIs(){
+
+    return (gicd->TYPER & GICD_TYPER_LPIS_BIT) ? true: false;
+}
+
+
+
 void gic_init()
 {
-    if (GIC_VERSION == GICV3) {
+    if (GIC_VERSION == GICV3 || GIC_VERSION == GICV4) {
         sysreg_icc_sre_el2_write(ICC_SRE_SRE_BIT | ICC_SRE_ENB_BIT);    //Enable the system register interface and enable el1 access to icc_sre_el1
         ISB();
     }
@@ -82,24 +92,34 @@ void gic_init()
         gic_map_mmio();
         gicd_init();
         NUM_LRS = gich_num_lrs();
+
+        if(gicd_supports_LPIs()) //don't need gic version condition
+        {
+            console_printk("[BAO] LPI supported\n");
+            gits_map_mmio();
+            its_init();
+        }
     }
 
     cpu_sync_and_clear_msgs(&cpu_glb_sync);
 
     gic_cpu_init();
+
 }
 
 void gic_handle()
 {
-    uint32_t ack = gicc_iar();
+    uint32_t ack = gicc_iar();  //ack
     irqid_t id = bit32_extract(ack, GICC_IAR_ID_OFF, GICC_IAR_ID_LEN);
 
-    if (id < GIC_FIRST_SPECIAL_INTID) {
+    if (id < GIC_FIRST_SPECIAL_INTID || (id >= GIC_FIRST_LPIS && id <= GIC_MAX_LPIS)) {
         enum irq_res res = interrupts_handle(id);
-        gicc_eoir(ack);
+        gicc_eoir(ack);         //gic end of interrupt
         if (res == HANDLED_BY_HYP) {
-            gicc_dir(ack);
+            gicc_dir(ack);      //gic desactivate interrupt
         }
+    } else {
+        //console_printk("[BAO] Interrupt received wiht ID out of range - %d\n",id);
     }
 }
 
@@ -180,4 +200,55 @@ void gicd_set_enable(irqid_t int_id, bool en)
     } else {
         gicd->ICENABLER[reg_ind] = bit;
     }
+}
+
+void its_encode_cmd(struct its_cmd *cmd, uint8_t cmd_id){
+    its_mask_encode(&cmd->cmd[0],cmd_id,0,8);
+}
+
+void its_encode_valid(struct its_cmd *cmd, size_t val){
+    its_mask_encode(&cmd->cmd[2],val,63,1); 
+}
+void its_encode_target(struct its_cmd *cmd, uint64_t target){
+    its_mask_encode(&cmd->cmd[2],target,16,36);  
+}
+void its_encode_ic_id(struct its_cmd *cmd, uint64_t ic_id){
+    its_mask_encode(&cmd->cmd[2],ic_id,0,12);
+}
+
+void its_encode_device_id(struct its_cmd *cmd, uint32_t dev_id)
+{
+    its_mask_encode(&cmd->cmd[0],dev_id,32,32);
+}
+
+void its_encode_size(struct its_cmd *cmd, uint8_t size){
+    its_mask_encode(&cmd->cmd[1],size,0,5);
+}
+
+void its_encode_itt_addr(struct its_cmd *cmd, uint64_t itt_addr)
+{
+    its_mask_encode(&cmd->cmd[2],itt_addr,0,52);
+}
+
+/*ITSv4 support*/
+void its_encode_vpe_id(struct its_cmd *cmd, uint16_t vpe_id){
+    its_mask_encode(&cmd->cmd[1],vpe_id,32,16); 
+}
+void its_encode_vpt_addr(struct its_cmd *cmd, uint64_t vpt_addr){
+    its_mask_encode(&cmd->cmd[3],(vpt_addr>>16),16,36); 
+}
+void its_encode_vpt_size(struct its_cmd *cmd, uint8_t vpt_sz){
+    its_mask_encode(&cmd->cmd[3],vpt_sz-1,0,5);
+}
+void its_encode_event_id(struct its_cmd *cmd, uint32_t event_id)
+{
+    its_mask_encode(&cmd->cmd[1],event_id,0,32);
+}
+void its_encode_db_id(struct its_cmd *cmd, uint32_t db_id)
+{
+    its_mask_encode(&cmd->cmd[2],db_id,32,32);
+}
+void its_encode_virt_id(struct its_cmd *cmd, uint32_t virt_id)
+{
+    its_mask_encode(&cmd->cmd[2],virt_id,0,32);
 }

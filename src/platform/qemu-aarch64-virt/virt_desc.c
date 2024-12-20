@@ -27,6 +27,7 @@ struct platform platform = {
             .gich_addr = 0x08030000,
             .gicv_addr = 0x08040000,
             .gicr_addr = 0x080A0000,
+            .gits_addr = 0x08080000,
             .maintenance_id = 25,
         },
     },

@@ -8,6 +8,7 @@
 
 #include <arch/gic.h>
 
+
 static inline uint64_t gich_read_lr(size_t i)
 {
     if (i >= NUM_LRS) {
@@ -149,5 +150,9 @@ static inline void gicc_dir(uint32_t dir)
 {
     sysreg_icc_dir_el1_write(dir);
 }
+
+void gits_map_mmio();
+
+void its_init();
 
 #endif /* __GICV3_H__ */

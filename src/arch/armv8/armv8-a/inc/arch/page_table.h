@@ -126,6 +126,9 @@
 
 #define PTE_VM_DEV_FLAGS (PTE_MEMATTR_DEV_GRE | PTE_SH_NS | PTE_S2AP_RW | PTE_AF)
 
+#define PTE_VM_FLAGS_RO \
+    (PTE_MEMATTR_NRML_OWBC | PTE_MEMATTR_NRML_IWBC | PTE_SH_NS | PTE_S2AP_RO | PTE_AF)
+
 #ifndef __ASSEMBLER__
 
     typedef uint64_t pte_t;

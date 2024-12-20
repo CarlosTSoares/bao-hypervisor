@@ -18,6 +18,10 @@ ifeq ($(GIC_VERSION), GICV2)
 else ifeq ($(GIC_VERSION), GICV3)
 	cpu-objs-y+=vgicv3.o
 	cpu-objs-y+=gicv3.o
+else ifeq ($(GIC_VERSION), GICV4)
+	cpu-objs-y+=vgicv3.o
+	cpu-objs-y+=gicv3.o
+	cpu-objs-y+=gicv4.o
 else ifeq ($(GIC_VERSION),)
 $(error Platform must define GIC_VERSION)
 else

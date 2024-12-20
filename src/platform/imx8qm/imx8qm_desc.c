@@ -36,6 +36,7 @@ struct platform platform = {
             .gicc_addr = 0x52000000,
             .gich_addr = 0x52010000,
             .gicv_addr = 0x52020000,
+            .gits_addr = 0x51a20000,
             .maintenance_id = 25,
         },
 
@@ -44,6 +45,5 @@ struct platform platform = {
             .interrupt_id = 187,
             .global_mask = 0x7fc0,
         },
-
     },
 };

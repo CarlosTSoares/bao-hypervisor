@@ -11,6 +11,10 @@
 #elif (GIC_VERSION == GICV3)
 #include <arch/gicv3.h>
 #include <arch/vgicv3.h>
+#elif (GIC_VERSION == GICV4)
+#include <arch/gicv3.h>
+#include <arch/vgicv3.h>
+#include <arch/gicv4.h>
 #else
 #error "unknown GIV version " GIC_VERSION
 #endif
@@ -431,7 +435,8 @@ void vgicd_emul_pidr_access(struct emul_access* acc, struct vgic_reg_handler_inf
     bool gicr_access, cpuid_t vgicr_id)
 {
     if (!acc->write) {
-        vcpu_writereg(cpu()->vcpu, acc->reg, gicd->ID[((acc->addr & 0xff) - 0xd0) / 4]);
+        //vcpu_writereg(cpu()->vcpu, acc->reg, gicd->ID[((acc->addr & 0xff) - 0xd0) / 4]);
+        vcpu_writereg(cpu()->vcpu, acc->reg, 0x3b);
     }
 }
 
@@ -791,7 +796,7 @@ struct vgic_reg_handler_info vgicd_pidr_info = {
 
 struct vgic_reg_handler_info razwi_info = {
     vgic_emul_razwi,
-    0b0100,
+    0b1100,
 };
 
 __attribute__((weak)) struct vgic_reg_handler_info itargetr_info = {
@@ -833,7 +838,7 @@ struct vgic_reg_handler_info* vgic_get_reg_handler_info(enum vgic_reg_handler_in
 
 bool vgic_check_reg_alignment(struct emul_access* acc, struct vgic_reg_handler_info* handlers)
 {
-    if (!(handlers->alignment & acc->width) || ((acc->addr & (acc->width - 1)) != 0)) {
+    if ((!(handlers->alignment & acc->width) || ((acc->addr & (acc->width - 1)) != 0))) {
         return false;
     } else {
         return true;
@@ -1056,14 +1061,22 @@ static void vgic_eoir_highest_spilled_active(struct vcpu* vcpu)
 
 void vgic_handle_trapped_eoir(struct vcpu* vcpu)
 {
+    irqid_t vid;
     uint64_t eisr = gich_get_eisr();
     int64_t lr_ind = bit64_ffs(eisr & BIT64_MASK(0, NUM_LRS));
+
     while (lr_ind >= 0) {
         unsigned long lr_val = gich_read_lr(lr_ind);
         gich_write_lr(lr_ind, 0);
 
-        struct vgic_int* interrupt = vgic_get_int(vcpu, GICH_LR_VID(lr_val), vcpu->id);
+        vid = GICH_LR_VID(lr_val);
+        struct vgic_int* interrupt = vgic_get_int(vcpu, vid, vcpu->id);
         if (interrupt == NULL) {
+            if(vid >= GIC_FIRST_LPIS && vid <= GIC_MAX_LPIS)
+            {
+                eisr = gich_get_eisr();
+                lr_ind = bit64_ffs(eisr & BIT64_MASK(0, NUM_LRS));
+            }
             continue;
         }
 
@@ -1075,13 +1088,14 @@ void vgic_handle_trapped_eoir(struct vcpu* vcpu)
             vgic_yield_ownership(vcpu, interrupt);
         }
         spin_unlock(&interrupt->lock);
+
         eisr = gich_get_eisr();
         lr_ind = bit64_ffs(eisr & BIT64_MASK(0, NUM_LRS));
     }
 }
 
 void gic_maintenance_handler(irqid_t irq_id)
-{
+{    
     uint32_t misr = gich_get_misr();
 
     if (misr & GICH_MISR_EOI) {

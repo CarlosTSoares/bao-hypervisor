@@ -145,8 +145,11 @@ void* mem_alloc_page(size_t num_pages, enum AS_SEC sec, bool phys_aligned)
     vaddr_t vpage = INVALID_VA;
     struct ppages ppages = mem_alloc_ppages(cpu()->as.colors, num_pages, phys_aligned);
 
+    console_printk("Value of phys page is 0x%lx\n",ppages.base);
+
     if (ppages.num_pages == num_pages) {
         vpage = mem_alloc_map(&cpu()->as, sec, &ppages, INVALID_VA, num_pages, PTE_HYP_FLAGS);
+        console_printk("Value of virt page is 0x%lx\n",vpage);
     }
 
     return (void*)vpage;

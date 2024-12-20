@@ -20,7 +20,9 @@ struct arch_vm_platform {
         paddr_t gicd_addr;
         paddr_t gicc_addr;
         paddr_t gicr_addr;
+        paddr_t gits_addr;      //Only if gicv3
         size_t interrupt_num;
+        bool msi;
     } gic;
 
 #ifdef MEM_PROT_MMU
@@ -44,6 +46,10 @@ struct vm_arch {
     struct emul_mem vgicr_emul;
     struct emul_reg icc_sgir_emul;
     struct emul_reg icc_sre_emul;
+    /*Only if gicv3*/
+    struct emul_mem vgits_emul;
+    struct vgits vgits;
+    struct proptable prop_tab;
 };
 
 struct vcpu_arch {
@@ -69,5 +75,17 @@ static inline void vcpu_arch_inject_irq(struct vcpu* vcpu, irqid_t id)
 {
     vgic_inject(vcpu, id, 0);
 }
+
+static inline void vcpu_arch_inject_msi_irq(struct vcpu* vcpu, irqid_t id){
+    vgic_inject_msi(vcpu, id);
+}
+
+void vm_assign_lpi_interrupt(struct vm* vm, irqid_t int_id);
+
+
+
+
+/*LPI*/
+//void vm_add_lpi(struct vm* vm, struct gic_lpi_config* gic_lpi);
 
 #endif /* __ARCH_VM_H__ */

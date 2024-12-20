@@ -16,11 +16,13 @@ typedef void (*abort_handler_t)(unsigned long, unsigned long, unsigned long, uns
 
 void aborts_data_lower(unsigned long iss, unsigned long far, unsigned long il, unsigned long ec)
 {
+
+
+    unsigned long DSFC = bit64_extract(iss, ESR_ISS_DA_DSFC_OFF, ESR_ISS_DA_DSFC_LEN) & (0xf << 2);
+
     if (!(iss & ESR_ISS_DA_ISV_BIT) || (iss & ESR_ISS_DA_FnV_BIT)) {
         ERROR("no information to handle data abort (0x%x)", far);
     }
-
-    unsigned long DSFC = bit64_extract(iss, ESR_ISS_DA_DSFC_OFF, ESR_ISS_DA_DSFC_LEN) & (0xf << 2);
 
     if (DSFC != ESR_ISS_DA_DSFC_TRNSLT && DSFC != ESR_ISS_DA_DSFC_PERMIS) {
         ERROR("data abort is not translation fault - cant deal with it");
@@ -38,7 +40,6 @@ void aborts_data_lower(unsigned long iss, unsigned long far, unsigned long il, u
         emul.sign_ext = bit64_extract(iss, ESR_ISS_DA_SSE_OFF, ESR_ISS_DA_SSE_LEN);
 
         // TODO: check if the access is aligned. If not, inject an exception in the vm
-
         if (handler(&emul)) {
             unsigned long pc_step = 2 + (2 * il);
             vcpu_writepc(cpu()->vcpu, vcpu_readpc(cpu()->vcpu) + pc_step);
@@ -58,6 +59,7 @@ long int standard_service_call(unsigned long _fn_num)
     unsigned long x1 = vcpu_readreg(cpu()->vcpu, 1);
     unsigned long x2 = vcpu_readreg(cpu()->vcpu, 2);
     unsigned long x3 = vcpu_readreg(cpu()->vcpu, 3);
+
 
     if (is_psci_fid(smc_fid)) {
         ret = psci_smc_handler(smc_fid, x1, x2, x3);
@@ -174,9 +176,15 @@ void aborts_sync_handler()
         ipa_fault_addr = far;
     }
 
+
     unsigned long ec = bit64_extract(esr, ESR_EC_OFF, ESR_EC_LEN);
     unsigned long il = bit64_extract(esr, ESR_IL_OFF, ESR_IL_LEN);
     unsigned long iss = bit64_extract(esr, ESR_ISS_OFF, ESR_ISS_LEN);
+    //unsigned long iss2 = bit64_extract(esr, 32, 5);
+
+    
+    //console_printk("Sync handler 0x%lx and ec is 0x%x\n",ipa_fault_addr,ec);
+    //console_printk("Emul access to the addr 0x%lx with ec 0x%x\n",ipa_fault_addr,ec);
 
     abort_handler_t handler = abort_handlers[ec];
     if (handler) {

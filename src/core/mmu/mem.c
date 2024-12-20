@@ -416,14 +416,12 @@ void mem_unmap(struct addr_space* as, vaddr_t at, size_t num_pages, bool free_pp
     vaddr_t vaddr = at;
     vaddr_t top = at + (num_pages * PAGE_SIZE);
     size_t lvl = 0;
-
     spin_lock(&as->lock);
-
     struct section* sec = mem_find_sec(as, at);
+
     if (sec->shared) {
         spin_lock(&sec->lock);
     }
-
     while (vaddr < top) {
         pte_t* pte = pt_get_pte(&as->pt, lvl, vaddr);
         if (pte == NULL) {
@@ -437,7 +435,6 @@ void mem_unmap(struct addr_space* as, vaddr_t at, size_t num_pages, bool free_pp
             size_t entry = pt_getpteindex(&as->pt, pte, lvl);
             size_t nentries = pt_nentries(&as->pt, lvl);
             size_t lvlsz = pt_lvlsize(&as->pt, lvl);
-
             while ((entry < nentries) && (vaddr < top)) {
                 if (!pte_table(&as->pt, pte, lvl)) {
                     vaddr_t vpage_base = vaddr & ~(lvlsz - 1);
@@ -945,6 +942,20 @@ vaddr_t mem_alloc_map_dev(struct addr_space* as, enum AS_SEC section, vaddr_t at
         struct ppages pages = mem_ppages_get(pa, num_pages);
         mem_flags_t flags = as->type == AS_HYP ? PTE_HYP_DEV_FLAGS : PTE_VM_DEV_FLAGS;
         mem_map(as, address, &pages, num_pages, flags);
+    }
+
+    return address;
+}
+
+/*LPI support functions*/
+vaddr_t mem_alloc_map_flags(struct addr_space* as, enum AS_SEC section, vaddr_t at, paddr_t pa,
+    size_t num_pages,mem_flags_t flags)
+{
+    vaddr_t address = mem_alloc_vpage(as, section, at, num_pages);
+    if (address != INVALID_VA) {
+        struct ppages pages = mem_ppages_get(pa, num_pages);
+        mem_flags_t mem_flags = flags;
+        mem_map(as, address, &pages, num_pages, mem_flags);
     }
 
     return address;

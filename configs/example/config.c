@@ -89,12 +89,15 @@ struct config config = {
                     }
                 },
 
+                //.msi = true,
                 .arch = {
                     .gic = {
                         .gicc_addr = 0x2C000000,
                         .gicd_addr = 0x2F000000
                     }
-                }
+                },
+
+
             },
 
         },

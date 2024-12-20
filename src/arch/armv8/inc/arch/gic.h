@@ -14,12 +14,16 @@
 
 #define GICV2                     (2)
 #define GICV3                     (3)
+#define GICV4                     (4)
 
 #define GIC_FIRST_SPECIAL_INTID   (1020)
 #define GIC_MAX_INTERUPTS         1024
 #define GIC_MAX_VALID_INTERRUPTS  (GIC_FIRST_SPECIAL_INTID)
 #define GIC_MAX_SGIS              16
 #define GIC_MAX_PPIS              16
+#define GIC_N_LPIS                1024
+#define GIC_FIRST_LPIS            8192
+#define GIC_MAX_LPIS              (GIC_FIRST_LPIS + GIC_N_LPIS)
 #define GIC_CPU_PRIV              (GIC_MAX_SGIS + GIC_MAX_PPIS)
 #define GIC_MAX_SPIS              (GIC_MAX_INTERUPTS - GIC_CPU_PRIV)
 #define GIC_PRIO_BITS             8
@@ -79,6 +83,7 @@
 #define GICD_TYPER_IDBITS_OFF     (19)
 #define GICD_TYPER_IDBITS_LEN     (5)
 #define GICD_TYPER_IDBITS_MSK     BIT32_MASK(GICD_TYPER_IDBITS_OFF, GICD_TYPER_IDBITS_LEN)
+#define GICD_TYPER_LPIS_BIT       (1UL << 17)
 
 /* Software Generated Interrupt Register, GICD_SGIR */
 
@@ -143,11 +148,47 @@ struct gicd_hw {
 
 #define GICR_CTRL_DS_BIT              (1 << 6)
 #define GICR_CTRL_DS_DPG1NS           (1 << 25)
+#define GICR_CTLR_EN_LPIS_OFF         (0)
+#define GICR_CTLR_EN_LPIS_MSK         (BIT32_MASK(GICR_CTLR_EN_LPIS_OFF, 1))
 #define GICR_TYPER_LAST_OFF           (4)
 #define GICR_TYPER_PRCNUM_OFF         (8)
 #define GICR_TYPER_AFFVAL_OFF         (32)
 #define GICR_WAKER_ProcessorSleep_BIT (0x2)
 #define GICR_WAKER_ChildrenASleep_BIT (0x4)
+
+#define GICR_PROPBASER_PHY_OFF                  (12)
+#define GICR_PROPBASER_PHY_LEN                  (40)
+#define GICR_PROPBASER_SHAREABILITY_OFF         (10)
+#define GICR_PROPBASER_INNERCACHE_OFF           (7)
+#define GICR_PROPBASER_InnerShareable           (1ULL << GICR_PROPBASER_SHAREABILITY_OFF)
+#define GICR_PROPBASER_RaWaWb                   (7ULL << GICR_PROPBASER_INNERCACHE_OFF)
+#define GICR_PROPBASER_PHY_ADDR_MSK        (BIT64_MASK(GICR_PROPBASER_PHY_OFF,GICR_PROPBASER_PHY_LEN))
+#define GICR_PROPBASER_ID_BITS_LEN              (5)
+#define GICR_PROPBASER_ID_BITS_MSK         (BIT64_MASK(0,GICR_PROPBASER_ID_BITS_LEN))
+
+#define GICR_PENDBASER_PHY_OFF                  (16)
+#define GICR_PENDBASER_PHY_LEN                  (36)
+#define GICR_PENDBASER_PHY_ADDR_MSK        (BIT64_MASK(GICR_PENDBASER_PHY_OFF,GICR_PENDBASER_PHY_LEN))
+
+
+#define GICR_PROPTABLE_SZ(IDbits)               ((1<<(IDbits+1)) - 8192) //maybe not here
+
+#define GICR_VPENDBASER_IDAI_BIT                (1ULL << 62)
+#define GICR_VPENDBASER_VAL_BIT                 (1ULL << 63)
+
+#define LPI_CONFIG_PRIO_OFF                     (2)
+#define LPI_CONFIG_PRIO_LEN                     (6)
+#define LPI_CONFIG_PRIO_MSK                     (BIT64_MASK(LPI_CONFIG_PRIO_OFF,LPI_CONFIG_PRIO_LEN))
+#define LPI_CONFIG_EN_MSK                       (1)
+
+#if (GIC_VERSION == GICV3)
+    #define GICR_VFRAME_SIZE 0x0
+#elif (GIC_VERSION == GICV4)
+    #define GICR_VFRAME_SIZE 0x20000
+#else
+    #error "unknown GIV version " GIC_VERSION
+#endif
+
 
 struct gicr_hw {
     /* RD_base frame */
@@ -196,6 +237,19 @@ struct gicr_hw {
     uint32_t IGRPMODR0;
     uint8_t pad16[0x0e00 - 0xd04];
     uint32_t NSACR;
+
+    #if (GIC_VERSION == GICV4)
+    /* VLPI_base frame - only if gicv4 available*/
+    uint8_t vlpi_base[0] __attribute__((aligned(0x10000)));
+    uint8_t pad17[0x70 - 0x00];
+    uint64_t VPROPBASER;
+    uint64_t VPENDBASER;
+    uint8_t pad18[0x10000 - 0x80];
+
+    /* Reserved_base frame - only if gicv4 available*/
+    uint8_t reserved_base[0] __attribute__((aligned(0x10000)));
+    uint8_t pad19[0x10000];
+    #endif
 } __attribute__((__packed__, aligned(0x10000)));
 
 /* CPU Interface Control Register, GICC_CTLR */
@@ -428,10 +482,221 @@ void gicr_set_icfgr(irqid_t int_id, uint8_t cfg, cpuid_t gicr_id);
 void gicr_set_act(irqid_t int_id, bool act, cpuid_t gicr_id);
 uint8_t gicr_get_prio(irqid_t int_id, cpuid_t gicr_id);
 
+bool gicr_get_en_lpis(cpuid_t gicr_id);
+void gicr_set_propbaser(cpuid_t gicr_id, uint64_t phy_addr, size_t id_bits);
+void gicr_set_pendbaser(cpuid_t gicr_id, uint64_t phy_addr);
+void gicr_set_vpropbaser(cpuid_t gicr_id, uint64_t phy_addr, size_t id_bits);
+void gicr_set_vpendbaser(cpuid_t gicr_id, uint64_t phy_addr);
+
 void gic_maintenance_handler(irqid_t irq_id);
+
+struct its_cmd{
+    uint64_t cmd[4];
+};
+
+static inline void its_mask_encode(uint64_t *cmd_dw, uint64_t val, size_t off, size_t len){
+    uint64_t msk = BIT64_MASK(off,len);
+    *cmd_dw &= ~msk;
+    *cmd_dw |= (val << off) & msk;
+}
+
+void its_encode_cmd(struct its_cmd *cmd, uint8_t cmd_id);
+void its_encode_valid(struct its_cmd *cmd, size_t val);
+void its_encode_target(struct its_cmd *cmd, uint64_t target);
+void its_encode_ic_id(struct its_cmd *cmd, uint64_t ic_id);
+void its_encode_size(struct its_cmd *cmd, uint8_t size);
+void its_encode_itt_addr(struct its_cmd *cmd, uint64_t itt_addr);
+void its_encode_device_id(struct its_cmd *cmd, uint32_t device_id);
+
+void its_encode_vpe_id(struct its_cmd *cmd, uint16_t vpe_id);
+void its_encode_vpt_addr(struct its_cmd *cmd, uint64_t vpt_addr);
+void its_encode_vpt_size(struct its_cmd *cmd, uint8_t vpt_sz);
+void its_encode_event_id(struct its_cmd *cmd, uint32_t event_id);
+void its_encode_db_id(struct its_cmd *cmd, uint32_t db_id);
+void its_encode_virt_id(struct its_cmd *cmd, uint32_t virt_id);
+
+#if (GIC_VERSION == GICV4)
+void its_translate_vcmd(struct its_cmd *dest_cmd,
+                    struct its_cmd *src_cmd);
+#elif (GIC_VERSION == GICv3)
+void its_translate_cmd(struct its_cmd *dest_cmd,
+                    struct its_cmd *src_cmd);
+#endif
+
 
 extern volatile struct gicd_hw* gicd;
 extern volatile struct gicr_hw* gicr;
+extern spinlock_t gicr_lock;
+
+
+    /*----------- GIC ITS -----------*/
+
+    // Define only to GICv3
+    // Verify the alignement and the offsets
+
+    #define GIC_MAX_TTD               8     //max translation table descriptors
+
+    #define GITS_TYPER_PHY_OFF              (0)
+    #define GITS_TYPER_VIRT_OFF             (1)
+    #define GITS_TYPER_VIRT_MSK             (1ULL << 1)
+
+    #define GITS_TYPER_CID_OFF              (32)
+    #define GITS_TYPER_CID_LEN              (4)
+    #define GITS_TYPER_CID_MSK              (BIT_MASK(GITS_TYPER_CID_OFF, GITS_TYPER_CID_LEN))
+    #define GITS_TYPER_CIL_BIT              (1ULL << 36)
+
+    
+
+    #define GITS_CBASER_RaWaWb              (7ULL << 59)
+    #define GITS_CBASER_InnerShareable      (1ULL << 10)
+    #define GITS_CBASER_VALID               (1ULL << 63)
+    #define GITS_CBASER_PHY_ADDR_OFF        (12)
+    #define GITS_CBASER_PHY_ADDR_LEN        (40)
+
+    #define GITS_CBASER_SIZE_MSK            (0xff)
+    #define GITS_CBASER_PHY_ADDR_MSK        (BIT64_MASK(GITS_CBASER_PHY_ADDR_OFF,GITS_CBASER_PHY_ADDR_LEN))
+
+    #define GITS_BASER_VALID_BIT            (1ULL << 63)
+    #define GITS_BASER_PHY_ADDR_OFF         (12)
+    #define GITS_BASER_PHY_ADDR_LEN         (36)
+    #define GITS_BASER_PHY_ADDR_MSK         (BIT64_MASK(GITS_BASER_PHY_ADDR_OFF,GITS_BASER_PHY_ADDR_LEN))
+    #define GITS_BASER_TYPE_OFF             (56)
+    #define GITS_BASER_TYPE_LEN             (3)
+    #define GITS_BASER_TYPE_MASK            (BIT64_MASK(GITS_BASER_TYPE_OFF,GITS_BASER_TYPE_LEN))
+    #define GITS_BASER_ENTRY_SZ_OFF         (48)
+    #define GITS_BASER_ENTRY_SZ_LEN         (5)
+    #define GITS_BASER_ENTRY_SZ_MASK        (BIT64_MASK(GITS_BASER_ENTRY_SZ_OFF,GITS_BASER_ENTRY_SZ_LEN))
+    #define GITS_BASER_PAGE_SZ_OFF          (56)
+    #define GITS_BASER_PAGE_SZ_LEN          (3)
+    #define GITS_BASER_PAGE_SZ_MASK         (BIT64_MASK(GITS_BASER_PAGE_SZ_OFF,GITS_BASER_PAGE_SZ_LEN))
+    #define GITS_BASER_RO_MASK              (GITS_BASER_TYPE_MASK | GITS_BASER_ENTRY_SZ_MASK | GITS_BASER_PAGE_SZ_MASK)
+    
+    #define GITS_BASER_PHY_OFF                  (12)
+    #define GITS_BASER_PHY_LEN                  (36)
+    #define GITS_BASER_SHAREABILITY_OFF         (10)
+    #define GITS_BASER_INNERCACHE_OFF           (59)
+    #define GITS_BASER_InnerShareable           (1ULL << GITS_BASER_SHAREABILITY_OFF)
+    #define GITS_BASER_RaWaWb                   (7ULL << GITS_BASER_INNERCACHE_OFF)
+    #define GITS_BASER_VAL_BIT                   (1ULL << 63)
+
+    #define GIC_HAS_VLPI(gits)		(!!((gits)->TYPER & GITS_TYPER_VIRT_MSK))
+
+    #define GITS_BASER_COLLT_TYPE           (0x4)
+    #define GITS_BASER_VPET_TYPE            (0x2)
+
+
+
+    /*
+    * ITS command descriptors - parameters to be encoded in a command
+    * block.
+    */
+    struct its_cmd_desc {
+        union {
+            struct {
+            	uint16_t ic_id;
+                uint64_t target;
+                bool valid;
+            } its_mapc_cmd;
+
+            struct {
+                uint64_t target;
+            } its_sync_cmd;
+
+            struct {
+                uint32_t device_id;
+                uint8_t size;
+                uint64_t itt_addr;
+                bool valid;
+            } its_mapd_cmd;
+
+            struct {
+                uint32_t device_id;
+                uint32_t event_id;
+            } its_inv_cmd;
+
+            struct {
+                uint16_t vpe_id;
+                uint64_t target;
+                uint64_t vpt_addr;
+                uint8_t vpt_size;
+                bool valid;
+            } its_vmapp_cmd;
+
+            struct {
+                uint16_t vpe_id;
+            } its_vmovi_cmd;
+
+            struct {
+                uint16_t vpe_id;
+            } its_vinvall_cmd;
+
+            struct {
+                uint16_t vpe_id;
+            } its_vsync_cmd;
+
+            struct {
+                uint16_t vpe_id;
+                uint32_t device_id;
+                uint32_t virt_id;
+                uint32_t event_id;
+                uint32_t db_id;
+                bool db_enabled;
+            } its_vmapti_cmd;
+        };
+    };
+
+    //Changed the pads numbers
+    struct gits_hw {
+        /*ITS_CTRL_base frame*/
+        uint32_t CTLR;
+        uint32_t IIDR;
+        uint64_t TYPER;
+        uint8_t pad0[0x80 - 0x10];
+        uint64_t CBASER;
+        uint64_t CWRITER;
+        uint64_t CREADR;
+        uint8_t pad1[0x100 - 0x98];
+        uint64_t BASER[GIC_MAX_TTD];
+        uint8_t pad2[0xFFD0 - 0x140];   
+        uint32_t ID[(0x10000 - 0xFFD0) / sizeof(uint32_t)];
+
+        /*translation_base frame - ITS_base + 0x10000*/
+        /*uint8_t transl_base[0] __attribute__((aligned(0x10000)));
+        uint8_t pad3[0x40 - 0x0];
+        uint32_t TRANSLATER;
+        uint8_t pad4[0x10000 - 0x44];*/
+    } __attribute__((__packed__, aligned(0x10000)));    //64KB-aligned?
+
+    extern volatile struct gits_hw* gits;
+
+
+    #define ITS_CMD_QUEUE_N_PAGE     16
+    #define ITS_COLL_BITS_MAX        16
+
+
+
+    /* ITS defines */
+    #define ITS_MAPC_CMD            (0x09)     
+    #define ITS_SYNC_CMD            (0x05)
+    #define ITS_MAPD_CMD            (0x08)
+    #define ITS_INV_CMD             (0x0C)
+    #define ITS_MAPI_CMD            (0x0B)
+    #define ITS_INVALL_CMD          (0x0D)
+    #define ITS_MAPTI_CMD           (0x0A)
+
+    #define ITS_VMAPP_CMD           (0x29)
+    #define ITS_VSYNC_CMD           (0x25)
+    #define ITS_VINVALL_CMD         (0x2D)
+    #define ITS_VMAPTI_CMD          (0x2A)
+
+
+    #define ITS_CMD_ENC_OFF         (0)
+    #define ITS_CMD_ENC_LEN         (8)
+    #define ITS_CMD_RDBASE_OFF      (16)
+    #define ITS_CMD_RDBASE_LEN      (35)
+
+    extern struct its_cmd *its_cmd_queue;
+//#endif
 
 size_t gich_num_lrs();
 

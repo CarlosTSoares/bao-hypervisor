@@ -13,6 +13,7 @@ void vm_arch_init(struct vm* vm, const struct vm_config* config)
 {
     if (vm->master == cpu()->id) {
         vgic_init(vm, &config->platform.arch.gic);
+        
     }
     cpu_sync_and_clear_msgs(&vm->sync);
 }
@@ -93,3 +94,8 @@ void vcpu_arch_run(struct vcpu* vcpu)
         cpu_idle();
     }
 }
+
+// void vm_assign_lpi_interrupt(struct vm* vm, irqid_t int_id)
+// {
+//     bitmap_set(vm->arch.lpis_interrupt_bitmap, int_id-8192);
+// }

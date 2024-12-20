@@ -68,6 +68,11 @@ vaddr_t mem_alloc_map(struct addr_space* as, enum AS_SEC section, struct ppages*
     size_t num_pages, mem_flags_t flags);
 vaddr_t mem_alloc_map_dev(struct addr_space* as, enum AS_SEC section, vaddr_t at, paddr_t pa,
     size_t size);
+
+/*LPI support function*/
+vaddr_t mem_alloc_map_flags(struct addr_space* as, enum AS_SEC section, vaddr_t at, paddr_t pa,
+    size_t size,mem_flags_t flags);
+
 void mem_unmap(struct addr_space* as, vaddr_t at, size_t num_pages, bool free_ppages);
 bool mem_map_reclr(struct addr_space* as, vaddr_t va, struct ppages* ppages, size_t num_pages,
     mem_flags_t flags);
@@ -82,6 +87,8 @@ size_t mem_cpu_boot_alloc_size();
 
 void as_arch_init(struct addr_space* as);
 bool mem_translate(struct addr_space* as, vaddr_t va, paddr_t* pa);
+void mem_guest_ipa_translate(void* va, uint64_t* physical_address);
+
 
 extern struct list page_pool_list;
 

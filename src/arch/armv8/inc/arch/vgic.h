@@ -61,6 +61,8 @@ struct vgicr {
     uint64_t TYPER;
     uint32_t CTLR;
     uint32_t IIDR;
+    uint64_t PROPBASER;
+    uint64_t PENDBASER;
 };
 
 struct vgic_priv {
@@ -71,11 +73,40 @@ struct vgic_priv {
     struct vgic_int interrupts[GIC_CPU_PRIV];
 };
 
+
+/*Only if givv3 implemented*/
+
+struct vgits_cmdq{
+    struct its_cmd* base_cmdq;
+    size_t page_size; //in pages
+};
+
+struct vgits{
+    spinlock_t lock;
+    struct vgits_cmdq vgits_cmdq;
+    uint64_t CBASER;
+    uint64_t TYPER;
+    uint64_t BASER[GIC_MAX_TTD];    
+};
+
+struct gic_lpi_interrupt{
+    size_t enable;
+    uint8_t prio;
+};
+
+struct proptable{
+    uint8_t *proptab_base;
+    vaddr_t vm_proptable_vaddr;
+    size_t proptab_size;    //in bytes
+};
+
+
 void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp);
 void vgic_cpu_init(struct vcpu* vcpu);
 void vgic_set_hw(struct vm* vm, irqid_t id);
 void vgic_inject(struct vcpu* vcpu, irqid_t id, vcpuid_t source);
 void vgic_inject_hw(struct vcpu* vcpu, irqid_t id);
+void vgic_inject_msi(struct vcpu* vcpu, irqid_t id);
 
 /* VGIC INTERNALS */
 
