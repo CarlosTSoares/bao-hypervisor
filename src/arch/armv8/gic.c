@@ -95,7 +95,6 @@ void gic_init()
 
         if(gicd_supports_LPIs()) //don't need gic version condition
         {
-            console_printk("[BAO] LPI supported\n");
             gits_map_mmio();
             its_init();
         }
@@ -221,13 +220,18 @@ void its_encode_device_id(struct its_cmd *cmd, uint32_t dev_id)
     its_mask_encode(&cmd->cmd[0],dev_id,32,32);
 }
 
-void its_encode_size(struct its_cmd *cmd, uint8_t size){
+void its_encode_size(struct its_cmd *cmd, size_t size){
     its_mask_encode(&cmd->cmd[1],size,0,5);
 }
 
 void its_encode_itt_addr(struct its_cmd *cmd, uint64_t itt_addr)
 {
     its_mask_encode(&cmd->cmd[2],itt_addr,0,52);
+}
+
+void its_encode_pint_id(struct its_cmd *cmd, uint32_t pint_id)
+{
+    its_mask_encode(&cmd->cmd[1],pint_id,32,32);
 }
 
 /*ITSv4 support*/

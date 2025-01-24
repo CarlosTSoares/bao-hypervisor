@@ -22,7 +22,6 @@ struct arch_vm_platform {
         paddr_t gicr_addr;
         paddr_t gits_addr;      //Only if gicv3
         size_t interrupt_num;
-        bool msi;
     } gic;
 
 #ifdef MEM_PROT_MMU

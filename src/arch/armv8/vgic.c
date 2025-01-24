@@ -374,6 +374,7 @@ bool vgic_add_lr(struct vcpu* vcpu, struct vgic_int* interrupt)
     }
 
     if (lr_ind >= 0) {
+        //console_printk("Write to lr id %d \n",interrupt->id);
         vgic_write_lr(vcpu, interrupt, lr_ind);
         ret = true;
     } else {
@@ -1065,6 +1066,8 @@ void vgic_handle_trapped_eoir(struct vcpu* vcpu)
     uint64_t eisr = gich_get_eisr();
     int64_t lr_ind = bit64_ffs(eisr & BIT64_MASK(0, NUM_LRS));
 
+    console_printk("Inside maintenance handler\n");
+
     while (lr_ind >= 0) {
         unsigned long lr_val = gich_read_lr(lr_ind);
         gich_write_lr(lr_ind, 0);
@@ -1074,6 +1077,7 @@ void vgic_handle_trapped_eoir(struct vcpu* vcpu)
         if (interrupt == NULL) {
             if(vid >= GIC_FIRST_LPIS && vid <= GIC_MAX_LPIS)
             {
+                console_printk("Inside maintenance handler for int_id %d\n",vid);
                 eisr = gich_get_eisr();
                 lr_ind = bit64_ffs(eisr & BIT64_MASK(0, NUM_LRS));
             }
@@ -1097,6 +1101,8 @@ void vgic_handle_trapped_eoir(struct vcpu* vcpu)
 void gic_maintenance_handler(irqid_t irq_id)
 {    
     uint32_t misr = gich_get_misr();
+
+    console_printk("Inside maintenance handler for int_id %d\n",irq_id);
 
     if (misr & GICH_MISR_EOI) {
         vgic_handle_trapped_eoir(cpu()->vcpu);

@@ -62,6 +62,10 @@ struct vm_platform {
     irqid_t* pcie_irq;
     //bool pcie_msi;   /* specify msi capability in VM*/
 
+    /* MSI-specific configuration*/
+    size_t msi_num;
+    irqid_t* msi_id;
+
 
     // /**
     //  * In MPU-based platforms which might also support virtual memory
@@ -97,10 +101,10 @@ struct vm {
 
     struct vm_io io;
 
-    //To-do: add msi here
     bool msi;
 
     BITMAP_ALLOC(interrupt_bitmap, MAX_INTERRUPTS);
+    BITMAP_ALLOC(msi_bitmap, MAX_MSI);
 
     size_t ipc_num;
     struct ipc* ipcs;
@@ -174,13 +178,10 @@ static inline bool vm_has_interrupt(struct vm* vm, irqid_t int_id)
     return !!bitmap_get(vm->interrupt_bitmap, int_id);
 }
 
-// static inline bool vm_has_msi_interrupt(struct vm* vm, irqid_t int_id)
-// {
-//     if(int_id >= GIC_FIRST_LPIS && int_id <= GIC_MAX_LPIS)
-//         return !!bitmap_get(vm->arch.lpis_interrupt_bitmap, int_id - GIC_FIRST_LPIS);
-//     else
-//         return 0;
-// }
+static inline bool vm_has_msi(struct vm* vm, irqid_t msi_id)
+{
+    return (msi_id >= GIC_FIRST_LPIS ? !!bitmap_get(vm->msi_bitmap, msi_id - GIC_FIRST_LPIS) : false);
+}
 
 static inline void vcpu_inject_hw_irq(struct vcpu* vcpu, irqid_t id)
 {

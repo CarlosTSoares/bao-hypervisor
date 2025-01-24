@@ -456,9 +456,7 @@ void vgits_emul_typer_access(struct emul_access* acc, struct vgic_reg_handler_in
 void vgits_emul_cbaser_access(struct emul_access* acc, struct vgic_reg_handler_info* handlers,
     bool gicr_access, vcpuid_t vgicr_id) 
 {
-    if (!acc->write) {  //read register
-
-        //TO-DO Give to VM his virtual value of cbaser
+    if (!acc->write) {
         vcpu_writereg(cpu()->vcpu, acc->reg,cpu()->vcpu->vm->arch.vgits.CBASER);
     }else{
 
@@ -471,18 +469,18 @@ void vgits_emul_cbaser_access(struct emul_access* acc, struct vgic_reg_handler_i
         mem_guest_ipa_translate(cbaser_vaddr,&cmdq_pa);
 
         //Unmap from the Bao space
-        if(vm->arch.vgits.vgits_cmdq.base_cmdq != NULL) {
-            mem_unmap(&cpu()->as,(vaddr_t)vm->arch.vgits.vgits_cmdq.base_cmdq,vm->arch.vgits.vgits_cmdq.page_size,true);
+        if(vm->arch.vgits.vgits_cmdq.base_vaddr != NULL) {
+            mem_unmap(&cpu()->as,(vaddr_t)vm->arch.vgits.vgits_cmdq.base_vaddr,vm->arch.vgits.vgits_cmdq.page_size,true);
         }
 
-        vm->arch.vgits.vgits_cmdq.base_cmdq = (void*)mem_alloc_map_dev(&cpu()->as, SEC_HYP_GLOBAL, INVALID_VA,
+        vm->arch.vgits.vgits_cmdq.base_vaddr = (void*)mem_alloc_map_dev(&cpu()->as, SEC_HYP_GLOBAL, INVALID_VA,
         (vaddr_t)cmdq_pa,pages);
 
-        if(vm->arch.vgits.vgits_cmdq.base_cmdq == NULL)
-            ERROR("[BAO] Command queue not mapped to Bao\n");
+        if(vm->arch.vgits.vgits_cmdq.base_vaddr == NULL)
+            ERROR("[BAO] VM Command queue not mapped to Bao\n");
 
         vm->arch.vgits.vgits_cmdq.page_size = pages;
-        vm->arch.vgits.CBASER = tmp_cbaser;
+        vm->arch.vgits.CBASER = tmp_cbaser; //aren't there anu hardcoded info?
 
         // console_printk("xxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n");
         // console_printk("\twrite to cbaser register\t\n");
@@ -550,6 +548,38 @@ void its_build_inv(struct its_cmd *curr_cmd,
     its_encode_event_id(curr_cmd,desc->its_inv_cmd.event_id);
 }
 
+void its_build_mapti(struct its_cmd *curr_cmd,
+                    struct its_cmd_desc *desc)
+{
+    its_clear_cmd(curr_cmd);
+    its_encode_cmd(curr_cmd,ITS_MAPTI_CMD);
+    its_encode_device_id(curr_cmd,desc->its_mapti_cmd.device_id);
+    its_encode_event_id(curr_cmd,desc->its_mapti_cmd.event_id);
+    its_encode_pint_id(curr_cmd,desc->its_mapti_cmd.pint_id);
+    its_encode_ic_id(curr_cmd,desc->its_mapti_cmd.ic_id);
+}
+
+void its_build_mapi(struct its_cmd *curr_cmd,
+                    struct its_cmd_desc *desc)
+{
+    its_clear_cmd(curr_cmd);
+    its_encode_cmd(curr_cmd,ITS_MAPI_CMD);
+    its_encode_device_id(curr_cmd,desc->its_mapi_cmd.device_id);
+    its_encode_event_id(curr_cmd,desc->its_mapi_cmd.event_id);
+    its_encode_ic_id(curr_cmd,desc->its_mapi_cmd.ic_id);
+}
+
+void its_build_invall(struct its_cmd *curr_cmd,
+                    struct its_cmd_desc *desc)
+{
+    its_clear_cmd(curr_cmd);
+    its_encode_cmd(curr_cmd,ITS_INVALL_CMD);
+    its_encode_ic_id(curr_cmd,desc->its_invall_cmd.ic_id);
+}
+
+
+/* Build Virtual commands for GICv4*/
+
 void its_build_vmapp(struct its_cmd *curr_cmd,
                     struct its_cmd_desc *desc)
 {
@@ -605,34 +635,38 @@ void its_translate_cmd(struct its_cmd *dest_cmd,
                     struct its_cmd *src_cmd)
 {
     vcpuid_t vrdbase;
-    cpuid_t pgicr_id;
+    cpuid_t pgicr_id, vic_id;
 
     //TODO LOCK mechanism
     struct its_cmd_desc desc;
+    struct vm* vm =  cpu()->vcpu->vm;
 
-    // console_printk("\nCMD is 0x%x\n",GITS_CMD_MASK(src_cmd));
-    // console_printk("cmd 0 is 0x%lx and addr 0x%lx\n", src_cmd->cmd[0],src_cmd);
-    // console_printk("cmd 1 is 0x%lx\n", src_cmd->cmd[1]);
-    // console_printk("cmd 2 is 0x%lx\n", src_cmd->cmd[2]);
-    // console_printk("cmd 3 is 0x%lx\n\n", src_cmd->cmd[3]);
+    console_printk("\nCMD is 0x%x\n",GITS_CMD_MASK(src_cmd));
+    console_printk("cmd 0 is 0x%lx\n", src_cmd->cmd[0]);
+    console_printk("cmd 1 is 0x%lx\n", src_cmd->cmd[1]);
+    console_printk("cmd 2 is 0x%lx\n", src_cmd->cmd[2]);
+    console_printk("cmd 3 is 0x%lx\n\n", src_cmd->cmd[3]);
 
     switch (GITS_CMD_MASK(src_cmd)) {
     case ITS_MAPC_CMD:
         
         vrdbase = bit64_extract(src_cmd->cmd[2],ITS_CMD_RDBASE_OFF,ITS_CMD_RDBASE_LEN);
-        pgicr_id = vm_translate_to_pcpuid(cpu()->vcpu->vm, vrdbase); //ERROR verification
+        vic_id = bit64_extract(src_cmd->cmd[2],0,12);  //To-do: See implication of size
+
+        pgicr_id = vm_translate_to_pcpuid(cpu()->vcpu->vm, vrdbase); //To-do: ERROR verification
+        vm->arch.vgits.vicid_to_icid_map[vic_id] = pgicr_id;    // associate the vCollID to the physical one
 
         desc.its_mapc_cmd.target = pgicr_id;
-        desc.its_mapc_cmd.ic_id = bit64_extract(src_cmd->cmd[2],0,12);   //See imple defined sizes
+        desc.its_mapc_cmd.ic_id = pgicr_id; //In the physcal cmdqueue the collid is equal to the redistid
         desc.its_mapc_cmd.valid = !!bit64_extract(src_cmd->cmd[2],63,1);
 
         its_build_mapc(dest_cmd,&desc);
         break;
     case ITS_SYNC_CMD:
         vrdbase = bit64_extract(src_cmd->cmd[2],ITS_CMD_RDBASE_OFF,ITS_CMD_RDBASE_LEN);
-        pgicr_id = vm_translate_to_pcpuid(cpu()->vcpu->vm, vrdbase); //ERROR verification
+        pgicr_id = vm_translate_to_pcpuid(cpu()->vcpu->vm, vrdbase); //To-do: ERROR verification
 
-        desc.its_sync_cmd.target = pgicr_id; //store the vpe info
+        desc.its_sync_cmd.target = pgicr_id;
 
         // /*Check tracker*/
         // uint64_t gits_base = (uint64_t)gits;
@@ -648,23 +682,72 @@ void its_translate_cmd(struct its_cmd *dest_cmd,
         // its_build_sync(dest_cmd,&desc);
         // console_printk("BAO-VGICV3: SYNC cmd received\n");
 
+        its_build_sync(dest_cmd,&desc);
+
         break;
     case ITS_MAPD_CMD:
-        paddr_t itt_paddr;
-        vaddr_t *itt_vaddr = (vaddr_t *)bit64_extract(src_cmd->cmd[2],0,52);
-        mem_guest_ipa_translate(itt_vaddr,&itt_paddr);
+        // paddr_t itt_paddr;
+        // vaddr_t *itt_vaddr = (vaddr_t *)bit64_extract(src_cmd->cmd[2],0,52);
+        // mem_guest_ipa_translate(itt_vaddr,&itt_paddr);
 
-        desc.its_mapd_cmd.device_id = bit64_extract(src_cmd->cmd[0],32,32);
-        desc.its_mapd_cmd.size = bit64_extract(src_cmd->cmd[1],0,5);
-        desc.its_mapd_cmd.itt_addr = itt_paddr;
+        struct ppages itt_pages = { .num_pages = 0 };
+        itt_pages = mem_alloc_ppages(cpu()->as.colors,16,true); //To-do: Not to safe? Malicious VM can leak the physical mem
+        console_printk("[BAO-GICv3] Device table table allocated is 0x%lx\n",itt_pages.base);
+
+        desc.its_mapd_cmd.device_id = bit64_extract(src_cmd->cmd[0],32,32); //for now no control
+        desc.its_mapd_cmd.size = 15;
+        desc.its_mapd_cmd.itt_addr = itt_pages.base;
         desc.its_mapd_cmd.valid = !!bit64_extract(src_cmd->cmd[2],63,1);
 
         its_build_mapd(dest_cmd,&desc);
         break;
-    default:
+    case ITS_MAPTI_CMD:
+
+        vic_id = bit64_extract(src_cmd->cmd[2],0,12);  //To-do: See implication of size
+
+        desc.its_mapti_cmd.device_id = bit64_extract(src_cmd->cmd[0],32,32);
+        desc.its_mapti_cmd.event_id = bit64_extract(src_cmd->cmd[1],0,32);
+        //To-do: verify if id belongs to VM
+        desc.its_mapti_cmd.pint_id = bit64_extract(src_cmd->cmd[1],32,32);
+        //To-do: error verification
+        desc.its_mapti_cmd.ic_id = vm->arch.vgits.vicid_to_icid_map[vic_id];
+
+        its_build_mapti(dest_cmd,&desc);
+
+        break;
+    case ITS_MAPI_CMD:
+        vic_id = bit64_extract(src_cmd->cmd[2],0,12);  //To-do: See implication of size
+
+        desc.its_mapi_cmd.device_id = bit64_extract(src_cmd->cmd[0],32,32);
+        desc.its_mapi_cmd.event_id = bit64_extract(src_cmd->cmd[1],0,32);
+        //To-do: error verification
+        desc.its_mapi_cmd.ic_id = vm->arch.vgits.vicid_to_icid_map[vic_id];
+
+        its_build_mapi(dest_cmd,&desc);
+
+        break;
+    case ITS_INVALL_CMD:
+        vic_id = bit64_extract(src_cmd->cmd[2],0,12);  //To-do: See implication of size                                                                                                                     
+        desc.its_invall_cmd.ic_id = vm->arch.vgits.vicid_to_icid_map[vic_id];
+
+        its_build_invall(dest_cmd,&desc);
+        break;
+    case ITS_CLEAR_CMD:
+    case ITS_DISCARD_CMD:
+    case ITS_INT_CMD:
+    case ITS_INV_CMD:
         cache_flush_range((vaddr_t)cpu()->vcpu->vm->arch.prop_tab.proptab_base,0x1000);
         its_copy_to_cmdq(dest_cmd,src_cmd);
+    break;
+    default: //To-do: further evaluation - stop the hypervisor execution probably not the best solution
+        ERROR("[BAO-VGICV3] Invalid ITS command received with id 0x%x\n",GITS_CMD_MASK(src_cmd));
     }
+    console_printk("xx Dest CMD is 0x%x\n",GITS_CMD_MASK(dest_cmd));
+    console_printk("cmd 0 is 0x%lx\n", dest_cmd->cmd[0]);
+    console_printk("cmd 1 is 0x%lx\n", dest_cmd->cmd[1]);
+    console_printk("cmd 2 is 0x%lx\n", dest_cmd->cmd[2]);
+    console_printk("cmd 3 is 0x%lx\n\n", dest_cmd->cmd[3]);
+    console_printk("xxxxxxxxxxxxxxxxxxxxxxx\n");
 }
 
 void its_translate_vcmd(struct its_cmd *dest_cmd,
@@ -741,31 +824,35 @@ void its_translate_vcmd(struct its_cmd *dest_cmd,
 void vgits_emul_cwriter_access(struct emul_access* acc, struct vgic_reg_handler_info* handlers,
     bool gicr_access, vcpuid_t vgicr_id)
 {
-    uint64_t prev_cwriter, curr_cwriter, cmd_off;
-    size_t n_cmd;
+    uint64_t prev_cwriter, curr_cwriter, cmd_off,vm_cmd_off;
+    size_t n_cmd, num_cmd;
     struct its_cmd *vm_cmd, *its_cmd;
+
+
+    struct vm* vm =  cpu()->vcpu->vm;
     //uint64_t *its_test;
 
 
     if (!acc->write) {
-        vcpu_writereg(cpu()->vcpu, acc->reg,gits->CWRITER);
+        vcpu_writereg(cpu()->vcpu, acc->reg,vm->arch.vgits.CWRITER);
     }else{
 
         //Number of commands to translate
-        prev_cwriter = gits->CWRITER;
-        cmd_off =  prev_cwriter/0x20;
+        prev_cwriter = vm->arch.vgits.CWRITER;
+        vm_cmd_off =  prev_cwriter/0x20;
+        cmd_off = gits->CWRITER/0x20;
         curr_cwriter = vcpu_readreg(cpu()->vcpu, acc->reg);
         n_cmd = (prev_cwriter > curr_cwriter)? (((4096 * (ITS_CMD_QUEUE_N_PAGE + 1))- prev_cwriter) + curr_cwriter)/0x20 : (curr_cwriter - prev_cwriter)/0x20;
+        num_cmd = n_cmd;
 
-        vm_cmd = cpu()->vcpu->vm->arch.vgits.vgits_cmdq.base_cmdq + cmd_off;
-        //its_test = (uint64_t*)cpu()->vcpu->vm->arch.vgits.vgits_cmdq.base_cmdq;
+        //its_test = (uint64_t*)cpu()->vcpu->vm->arch.vgits.vgits_cmdq.base_vaddr;
+        vm_cmd = vm->arch.vgits.vgits_cmdq.base_vaddr + vm_cmd_off;
         its_cmd = its_cmd_queue + cmd_off;
 
-        paddr_t cmd_queue_pa;
+        //paddr_t cmd_queue_pa;
+        //mem_translate(&cpu()->as,(vaddr_t)vm->arch.vgits.vgits_cmdq.base_vaddr,&cmd_queue_pa);
 
-        mem_translate(&cpu()->as,(vaddr_t)cpu()->vcpu->vm->arch.vgits.vgits_cmdq.base_cmdq,&cmd_queue_pa);
-
-        cache_flush_range((vaddr_t)cpu()->vcpu->vm->arch.vgits.vgits_cmdq.base_cmdq,0x10000);
+        cache_flush_range((vaddr_t)vm->arch.vgits.vgits_cmdq.base_vaddr,0x10000);   //To-do: use vm size
 
         // console_printk("xxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n");
         // console_printk("\twrite to cwriter register\t\n");
@@ -795,8 +882,11 @@ void vgits_emul_cwriter_access(struct emul_access* acc, struct vgic_reg_handler_
         }
 
         cache_flush_range((vaddr_t)its_cmd_queue,0x10000);
+
         
-        gits->CWRITER = curr_cwriter;
+        vm->arch.vgits.CWRITER = curr_cwriter;
+        gits->CWRITER += (num_cmd * 0x20); 
+        console_printk("CWRITER updated to virtual value 0x%x and phy 0x%x by vm %d\n",curr_cwriter,gits->CWRITER, vm->id);
     }
 }
 
@@ -804,7 +894,7 @@ void vgits_emul_creadr_access(struct emul_access* acc, struct vgic_reg_handler_i
     bool gicr_access, vcpuid_t vgicr_id) 
 {
     if (!acc->write) {  //read only
-        vcpu_writereg(cpu()->vcpu, acc->reg,gits->CREADR);
+        vcpu_writereg(cpu()->vcpu, acc->reg,cpu()->vcpu->vm->arch.vgits.CWRITER);
     }
 }
 
@@ -812,45 +902,12 @@ void vgits_emul_baser_access(struct emul_access* acc, struct vgic_reg_handler_in
     bool gicr_access, vcpuid_t vgicr_id) 
 {
     size_t index = (GITS_REG_MASK(acc->addr) - GITS_REG_OFF(BASER)) >> 3;
-        /*
-    1. Get the baser index from acc->addr
-    2. 
-    3. write in the vcpu register
 
-    ---
-    Mask the addr to get the index value
-    0x8080100 - 0 - 00000000
-    0x8080108 - 1 - 00001000
-    0x8080110 - 2 - 00010000
-    0x8080118 - 3 - 00011000
-    0x8080120 - 4 - 00100000
-    */
-    if (!acc->write) { //read baser
+    if (!acc->write) {
         vcpu_writereg(cpu()->vcpu, acc->reg,(cpu()->vcpu->vm->arch.vgits.BASER[index]));
     }else{
-        
         uint64_t tmp = vcpu_readreg(cpu()->vcpu, acc->reg);
-        size_t type = bit64_extract(gits->BASER[index], GITS_BASER_TYPE_OFF, GITS_BASER_TYPE_LEN);
-
-        if((tmp & GITS_BASER_VALID_BIT) &&  type == 0x1)
-        {
-            
-            //translate to physical
-            paddr_t baser_pa = 0;
-            vaddr_t *baser_vaddr = (vaddr_t *)(tmp & GITS_BASER_PHY_ADDR_MSK);
-
-            mem_guest_ipa_translate(baser_vaddr,&baser_pa); //maybe has some implications
-
-            //need to alloc the coll table? If not, what happen?
-
-            uint64_t baser_paddr = baser_pa |
-                        (tmp & ~GITS_BASER_PHY_ADDR_MSK);
-            
-            gits->BASER[index]= baser_paddr;
-        }
-
         cpu()->vcpu->vm->arch.vgits.BASER[index] = (cpu()->vcpu->vm->arch.vgits.BASER[index] & GITS_BASER_RO_MASK) | (tmp & ~GITS_BASER_RO_MASK);
-
     }
 }
 
@@ -1027,7 +1084,7 @@ void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp)
 {
     vm->arch.vgicr_addr = vgic_dscrp->gicr_addr;
     vm->arch.vgicd.CTLR = 0;
-    vm->msi = vgic_dscrp->msi;
+    vm->msi = (vgic_dscrp->gits_addr ? true : false);
     size_t vtyper_itln = vgic_get_itln(vgic_dscrp);
     vm->arch.vgicd.int_num = 32 * (vtyper_itln + 1);
     vm->arch.vgicd.TYPER = ((vtyper_itln << GICD_TYPER_ITLN_OFF) & GICD_TYPER_ITLN_MSK) |
@@ -1078,7 +1135,7 @@ void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp)
         .handler = vgicr_emul_handler };
     vm_emul_add_mem(vm, &vm->arch.vgicr_emul);
 
-    /*ITS emul */
+    /*ITS/LPI emulation process*/
     if(vm->msi){
         for (size_t index = 0; index < GIC_MAX_TTD; index++) {
             //TODO -  Verify if flat tables are supported and manage Indirect bit
@@ -1090,11 +1147,27 @@ void vgic_init(struct vm* vm, const struct vgic_dscrp* vgic_dscrp)
             }
         }
 
+        /*CBASER*/
+
+        /*TYPER*/
+        //TODO Create pidr2 virtual registers to each VM
+        vm->arch.vgits.TYPER = gits->TYPER & ~GITS_TYPER_VIRT_MSK;
+
+        /*CWRITER*/
+        vm->arch.vgits.CWRITER = 0;
+
+        /*CTLR */
+
+
+        /*CollID map init*/
+        for (size_t index = 0; index < GITS_MAX_VCID; index++)
+            vm->arch.vgits.vicid_to_icid_map[index] = -1;
+
+
         // uint64_t gits_typer = 1ULL << GITS_TYPER_PHY_OFF;
         // gits_typer |= 
 
-        //TODO Create typer and pidr2 virtual registers to each VM
-        vm->arch.vgits.TYPER = gits->TYPER & ~GITS_TYPER_VIRT_MSK;
+
 
         vm->arch.vgits_emul = (struct emul_mem){ .va_base = vgic_dscrp->gits_addr,
             .size = ALIGN(sizeof(struct gits_hw), PAGE_SIZE),
@@ -1159,6 +1232,8 @@ struct vgic_int vgic_tmp_lpi(struct vcpu* vcpu, irqid_t id){
     interrupt.phys.redist = vcpu->phys_id;
     interrupt.hw = false;
     interrupt.enabled = vgic_get_en_lpi(vcpu->vm,id);
+
+    console_printk("En is %d, prio is 0x%x, redist 0x%x and id %d\n",interrupt.enabled,interrupt.prio, interrupt.phys.redist,id);
 
     return interrupt;
 }

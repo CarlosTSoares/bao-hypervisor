@@ -51,6 +51,11 @@ inline bool interrupts_arch_conflict(bitmap_t* interrupt_bitmap, irqid_t int_id)
     return (bitmap_get(interrupt_bitmap, int_id) && int_id > GIC_CPU_PRIV);
 }
 
+inline bool interrupts_msi_arch_conflict(bitmap_t* msi_bitmap, irqid_t msi_id)
+{
+    return (bitmap_get(msi_bitmap, msi_id - GIC_FIRST_LPIS) && msi_id >= GIC_FIRST_LPIS);
+}
+
 void interrupts_arch_clear(irqid_t int_id)
 {
     gic_set_act(int_id, false);
@@ -60,4 +65,9 @@ void interrupts_arch_clear(irqid_t int_id)
 void interrupts_arch_vm_assign(struct vm* vm, irqid_t id)
 {
     vgic_set_hw(vm, id);
+}
+
+void interrupts_msi_arch_vm_assign(struct vm* vm, irqid_t id)
+{
+    //vgic_set_hw(vm, id);
 }

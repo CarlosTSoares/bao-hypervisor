@@ -212,8 +212,11 @@ static void vm_init_pcie(struct vm* vm, const struct vm_config* config){
             }
         
         //Map the Translater frame of ITS to Vm space
-        size_t n = ALIGN(0x10000, PAGE_SIZE) / PAGE_SIZE;
-        mem_alloc_map_dev(&vm->as, SEC_VM_ANY, (vaddr_t)config->platform.arch.gic.gits_addr + 0x10000, platform.arch.gic.gits_addr + 0x10000, n);
+        if(config->platform.pcie_region_num)
+        {
+            size_t n = ALIGN(0x10000, PAGE_SIZE) / PAGE_SIZE;
+            mem_alloc_map_dev(&vm->as, SEC_VM_ANY, (vaddr_t)config->platform.arch.gic.gits_addr + 0x10000, platform.arch.gic.gits_addr + 0x10000, n);
+        }
 
         //if IOMMU is supported
         if (io_vm_init(vm, config)) {
@@ -225,6 +228,17 @@ static void vm_init_pcie(struct vm* vm, const struct vm_config* config){
                     }
                 }
             }
+        }
+}
+
+/*Make it exclusive to PCIe devices*/
+
+static void vm_init_msi(struct vm* vm, const struct vm_config* config){
+    
+    for (size_t i = 0; i < config->platform.msi_num; i++) {
+            if (!interrupts_msi_vm_assign(vm, config->platform.msi_id[i])) {
+                    ERROR("Failed to assign msi id %d", config->platform.msi_id[i]);
+                }
         }
 }
 
@@ -306,6 +320,7 @@ struct vm* vm_init(struct vm_allocation* vm_alloc, const struct vm_config* confi
     if (master) {
         vm_init_mem_regions(vm, config);
         vm_init_pcie(vm, config);
+        vm_init_msi(vm,config);
         vm_init_dev(vm, config);
         vm_init_ipc(vm, config);
     }

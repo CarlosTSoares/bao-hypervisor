@@ -346,7 +346,8 @@ void gits_set_baser(paddr_t paddr, size_t index){
     spin_lock(&gits_lock);
     gits->BASER[index]= paddr |
                     GITS_BASER_InnerShareable |
-                    GITS_BASER_RaWaWb;
+                    GITS_BASER_RaWaWb |
+                    0x200; //64KB page
     spin_unlock(&gits_lock);
 }
 
@@ -389,21 +390,20 @@ static inline void gic_alloc_cmd_queue(){
 
 }
 
-static inline void gic_alloc_coll_table(){
-    
-    /*Alloc collection table and assign to cbaser*/
-    struct ppages pages = { .num_pages = 0 };
-    pages = mem_alloc_ppages(cpu()->as.colors,16,true);
-
-    console_printk("[BAO-GICv3] CT_phy table allocated is 0x%lx\n",pages.base);
+static inline void gic_alloc_its_tables(){
 
     for (size_t index = 0; index < GIC_MAX_TTD; index++) {
         //TODO -  Verify if flat tables are supported and manage Indirect bit
-        if(bit64_extract(gits->BASER[index], GITS_BASER_TYPE_OFF, GITS_BASER_TYPE_LEN) == GITS_BASER_COLLT_TYPE)
+        if(bit64_extract(gits->BASER[index], GITS_BASER_TYPE_OFF, GITS_BASER_TYPE_LEN) == GITS_BASER_COLLT_TYPE ||
+           bit64_extract(gits->BASER[index], GITS_BASER_TYPE_OFF, GITS_BASER_TYPE_LEN) == GITS_BASER_DEVT_TYPE )
         {
+            /*Alloc physical table and assign to baser reg*/
+            struct ppages pages = { .num_pages = 0 };
+            pages = mem_alloc_ppages(cpu()->as.colors,16,true);
+
             gits_set_baser(pages.base,index);
             gits_set_baser_val(index);
-            console_printk("[BAO-GICv3] Collection table found is 0x%lx\n",gits->BASER[index]);
+            console_printk("[BAO-GICv3] pBASER assigned with value 0x%lx\n",gits->BASER[index]);
         }
     }
 }
@@ -432,12 +432,11 @@ void its_init()
 {
 
     gic_alloc_cmd_queue();
-    gic_alloc_coll_table(); //Only required by GICv3
+    //gic_alloc_coll_table(); //Only required by GICv3
 
-    // #if (GIC_VERSION == GICV3)
-    // gic_alloc_coll_table(); //Only required by GICv3
-
-    #if (GIC_VERSION == GICV4)
+    #if (GIC_VERSION == GICV3)
+        gic_alloc_its_tables(); //Only required by GICv3
+    #elif (GIC_VERSION == GICV4)
         if(GIC_HAS_VLPI(gits)){
             gic_alloc_vpe_table();
         } else {

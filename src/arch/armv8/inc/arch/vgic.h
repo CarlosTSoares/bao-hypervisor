@@ -76,17 +76,29 @@ struct vgic_priv {
 
 /*Only if givv3 implemented*/
 
-struct vgits_cmdq{
-    struct its_cmd* base_cmdq;
-    size_t page_size; //in pages
+// struct vgits_cmdq{
+//     struct its_cmd* base_cmdq;
+//     size_t page_size; //in pages
+// };
+
+struct vgits_table{
+    struct its_cmd* base_vaddr; //to do: make it general
+    size_t page_size;
+    //size_t attr;
 };
 
 struct vgits{
     spinlock_t lock;
-    struct vgits_cmdq vgits_cmdq;
     uint64_t CBASER;
     uint64_t TYPER;
-    uint64_t BASER[GIC_MAX_TTD];    
+    uint64_t BASER[GIC_MAX_TTD];
+    uint64_t CTLR;
+    uint64_t CWRITER;
+
+    //struct vgits_cmdq vgits_cmdq;
+    /*Tables*/
+    struct vgits_table vgits_cmdq;
+    size_t vicid_to_icid_map[GITS_MAX_VCID];
 };
 
 struct gic_lpi_interrupt{
@@ -94,6 +106,8 @@ struct gic_lpi_interrupt{
     uint8_t prio;
 };
 
+
+/*To do: reuse the vgits_table*/
 struct proptable{
     uint8_t *proptab_base;
     vaddr_t vm_proptable_vaddr;

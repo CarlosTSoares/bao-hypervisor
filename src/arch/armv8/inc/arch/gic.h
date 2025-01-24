@@ -504,9 +504,10 @@ void its_encode_cmd(struct its_cmd *cmd, uint8_t cmd_id);
 void its_encode_valid(struct its_cmd *cmd, size_t val);
 void its_encode_target(struct its_cmd *cmd, uint64_t target);
 void its_encode_ic_id(struct its_cmd *cmd, uint64_t ic_id);
-void its_encode_size(struct its_cmd *cmd, uint8_t size);
+void its_encode_size(struct its_cmd *cmd, size_t size);
 void its_encode_itt_addr(struct its_cmd *cmd, uint64_t itt_addr);
 void its_encode_device_id(struct its_cmd *cmd, uint32_t device_id);
+void its_encode_pint_id(struct its_cmd *cmd, uint32_t pint_id);
 
 void its_encode_vpe_id(struct its_cmd *cmd, uint16_t vpe_id);
 void its_encode_vpt_addr(struct its_cmd *cmd, uint64_t vpt_addr);
@@ -583,8 +584,9 @@ extern spinlock_t gicr_lock;
 
     #define GITS_BASER_COLLT_TYPE           (0x4)
     #define GITS_BASER_VPET_TYPE            (0x2)
+    #define GITS_BASER_DEVT_TYPE            (0x1)
 
-
+    #define GITS_MAX_VCID                   (0x4)       //max virtual collection id by VM
 
     /*
     * ITS command descriptors - parameters to be encoded in a command
@@ -604,7 +606,7 @@ extern spinlock_t gicr_lock;
 
             struct {
                 uint32_t device_id;
-                uint8_t size;
+                size_t size;
                 uint64_t itt_addr;
                 bool valid;
             } its_mapd_cmd;
@@ -613,6 +615,23 @@ extern spinlock_t gicr_lock;
                 uint32_t device_id;
                 uint32_t event_id;
             } its_inv_cmd;
+
+            struct {
+                uint32_t device_id;
+                uint32_t event_id;
+                uint32_t pint_id;
+                uint16_t ic_id;
+            } its_mapti_cmd;
+
+            struct {
+                uint32_t device_id;
+                uint32_t event_id;
+                uint16_t ic_id;
+            } its_mapi_cmd;
+
+            struct {
+                uint16_t ic_id;
+            } its_invall_cmd;
 
             struct {
                 uint16_t vpe_id;
@@ -683,6 +702,9 @@ extern spinlock_t gicr_lock;
     #define ITS_MAPI_CMD            (0x0B)
     #define ITS_INVALL_CMD          (0x0D)
     #define ITS_MAPTI_CMD           (0x0A)
+    #define ITS_CLEAR_CMD           (0x04)
+    #define ITS_DISCARD_CMD         (0x0f)
+    #define ITS_INT_CMD             (0x03)
 
     #define ITS_VMAPP_CMD           (0x29)
     #define ITS_VSYNC_CMD           (0x25)

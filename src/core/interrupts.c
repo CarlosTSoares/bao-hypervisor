@@ -12,7 +12,11 @@
 
 BITMAP_ALLOC(hyp_interrupt_bitmap, MAX_INTERRUPTS);
 BITMAP_ALLOC(global_interrupt_bitmap, MAX_INTERRUPTS);
+BITMAP_ALLOC(global_msi_bitmap, MAX_MSI);
+
+
 spinlock_t irq_reserve_lock = SPINLOCK_INITVAL;
+spinlock_t msi_reserve_lock = SPINLOCK_INITVAL;
 
 irq_handler_t interrupt_handlers[MAX_INTERRUPTS];
 
@@ -74,8 +78,10 @@ enum irq_res interrupts_handle(irqid_t int_id)
 
         return FORWARD_TO_VM;
 
-    } else if (int_id >= GIC_FIRST_LPIS && int_id <= GIC_MAX_LPIS){
+    } else if (vm_has_msi(cpu()->vcpu->vm, int_id)){
         vcpu_inject_msi_irq(cpu()->vcpu, int_id);
+
+        console_printk("MSI interrupt %d received for redist %d\n",int_id,cpu()->vcpu->phys_id);
 
         return FORWARD_TO_VM;
 
@@ -105,6 +111,25 @@ bool interrupts_vm_assign(struct vm* vm, irqid_t id)
 
     return ret;
 }
+
+/* Assign msi to vm */
+bool interrupts_msi_vm_assign(struct vm* vm, irqid_t msi_id)
+{
+    bool ret = false;
+
+    spin_lock(&msi_reserve_lock);
+    if (!interrupts_msi_arch_conflict(global_msi_bitmap, msi_id)) {
+        ret = true;
+        interrupts_msi_arch_vm_assign(vm, msi_id);
+
+        bitmap_set(vm->msi_bitmap, msi_id - GIC_FIRST_LPIS);
+        bitmap_set(global_msi_bitmap, msi_id - GIC_FIRST_LPIS);
+    }
+    spin_unlock(&msi_reserve_lock);
+
+    return ret;
+}
+
 
 bool interrupts_reserve(irqid_t int_id, irq_handler_t handler)
 {

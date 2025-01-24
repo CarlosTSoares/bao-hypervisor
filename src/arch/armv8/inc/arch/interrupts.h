@@ -10,5 +10,6 @@
 
 #define IPI_CPU_MSG    1
 #define MAX_INTERRUPTS GIC_MAX_INTERUPTS
+#define MAX_MSI        256      /*Start point value*/
 
 #endif /* __ARCH_INTERRUPTS_H__ */
